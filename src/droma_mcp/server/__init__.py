@@ -27,10 +27,6 @@ class DromaState:
         """Initialize R environment and load DROMA packages."""
         try:
             import rpy2.robjects as robjects
-            from rpy2.robjects import pandas2ri
-            
-            # Activate automatic pandas to R conversion
-            pandas2ri.activate()
             
             # Load required R libraries
             robjects.r('''
@@ -53,8 +49,13 @@ class DromaState:
         try:
             if dataset_type == "DromaSet":
                 # Load single DromaSet
+                # R function: createDromaSetFromDatabase(projects, db_path, db_group=NULL, load_metadata=TRUE, dataset_type=NULL, auto_load=FALSE, con=NULL)
                 self.r(f'''
-                    {dataset_id} <- createDromaSetFromDatabase("{dataset_id}", "{db_path}")
+                    {dataset_id} <- createDromaSetFromDatabase(
+                        projects = "{dataset_id}",
+                        db_path = "{db_path}",
+                        load_metadata = TRUE
+                    )
                 ''')
                 self.datasets[dataset_id] = dataset_id  # Store R object name
                 
@@ -63,9 +64,12 @@ class DromaState:
                 project_names = dataset_id.split(",")
                 project_names_r = 'c("' + '", "'.join(project_names) + '")'
                 
+                # R function: createMultiDromaSetFromDatabase(project_names, db_path, db_groups=NULL, load_metadata=TRUE, dataset_types=NULL, auto_load=FALSE, con=NULL)
                 self.r(f'''
                     {dataset_id.replace(",", "_")} <- createMultiDromaSetFromDatabase(
-                        {project_names_r}, "{db_path}"
+                        project_names = {project_names_r},
+                        db_path = "{db_path}",
+                        load_metadata = TRUE
                     )
                 ''')
                 self.multidatasets[dataset_id] = dataset_id.replace(",", "_")
@@ -139,10 +143,7 @@ async def droma_lifespan(server: FastMCP) -> AsyncIterator[DromaState]:
 # Create the main FastMCP server instance with improved configuration
 droma_mcp = FastMCP(
     name="DROMA-MCP-Server",
-    lifespan=droma_lifespan,
-    # Add metadata for better discoverability
-    version="0.2.0",
-    description="Model Context Protocol server for drug-omics association analysis"
+    lifespan=droma_lifespan
 )
 
 # Setup function that can be called before running
@@ -161,15 +162,15 @@ module = os.environ.get('DROMA_MCP_MODULE', 'all')
 if module in ['all', 'data_loading']:
     from .data_loading import data_loading_mcp
     # Mount with path prefix for better organization
-    droma_mcp.mount("/data", data_loading_mcp)
+    droma_mcp.mount(data_loading_mcp, prefix="data")
 
 if module in ['all', 'database_query']:
     from .database_query import database_query_mcp
-    droma_mcp.mount("/query", database_query_mcp)
+    droma_mcp.mount(database_query_mcp, prefix="query")
 
 if module in ['all', 'dataset_management']:
     from .dataset_management import dataset_management_mcp
-    droma_mcp.mount("/datasets", dataset_management_mcp)
+    droma_mcp.mount(dataset_management_mcp, prefix="datasets")
 
 # Add server metadata
 print(f"✓ DROMA MCP Server v0.2.0 initialized with module: {module}")

@@ -26,12 +26,16 @@ class LoadMolecularProfilesModel(BaseModel):
     dataset_name: str = Field(
         description="Dataset name (e.g., 'CCLE', 'gCSI')"
     )
-    molecular_type: MolecularType = Field(
+    feature_type: MolecularType = Field(
         description="Type of molecular data to load"
     )
-    features: Optional[List[str]] = Field(
+    select_features: Optional[List[str]] = Field(
         default=None,
         description="Specific features to load. If None, loads all features"
+    )
+    samples: Optional[List[str]] = Field(
+        default=None,
+        description="Specific samples to load. If None, loads all samples"
     )
     data_type: DataType = Field(
         default=DataType.ALL,
@@ -41,9 +45,13 @@ class LoadMolecularProfilesModel(BaseModel):
         default="all",
         description="Filter by tumor type ('all' or specific tumor types)"
     )
-    z_score: bool = Field(
-        default=True,
+    zscore: bool = Field(
+        default=False,
         description="Whether to apply z-score normalization"
+    )
+    format: str = Field(
+        default="long",
+        description="Data format: 'long' or 'wide'"
     )
 
 
@@ -53,9 +61,13 @@ class LoadTreatmentResponseModel(BaseModel):
     dataset_name: str = Field(
         description="Dataset name (e.g., 'CCLE', 'gCSI')"
     )
-    drugs: Optional[List[str]] = Field(
+    select_drugs: Optional[List[str]] = Field(
         default=None,
         description="Specific drugs to load. If None, loads all drugs"
+    )
+    samples: Optional[List[str]] = Field(
+        default=None,
+        description="Specific samples to load. If None, loads all samples"
     )
     data_type: DataType = Field(
         default=DataType.ALL,
@@ -65,8 +77,8 @@ class LoadTreatmentResponseModel(BaseModel):
         default="all",
         description="Filter by tumor type ('all' or specific tumor types)"
     )
-    z_score: bool = Field(
-        default=True,
+    zscore: bool = Field(
+        default=False,
         description="Whether to apply z-score normalization"
     )
 
@@ -77,10 +89,10 @@ class MultiProjectMolecularProfilesModel(BaseModel):
     multidromaset_id: str = Field(
         description="MultiDromaSet object identifier"
     )
-    molecular_type: MolecularType = Field(
+    feature_type: MolecularType = Field(
         description="Type of molecular data to load"
     )
-    features: Optional[List[str]] = Field(
+    select_features: Optional[List[str]] = Field(
         default=None,
         description="Specific features to load"
     )
@@ -97,8 +109,12 @@ class MultiProjectMolecularProfilesModel(BaseModel):
         description="Filter by tumor type"
     )
     zscore: bool = Field(
-        default=True,
+        default=False,
         description="Whether to apply z-score normalization"
+    )
+    format: str = Field(
+        default="long",
+        description="Data format: 'long' or 'wide'"
     )
 
 
@@ -108,7 +124,7 @@ class MultiProjectTreatmentResponseModel(BaseModel):
     multidromaset_id: str = Field(
         description="MultiDromaSet object identifier"
     )
-    drugs: Optional[List[str]] = Field(
+    select_drugs: Optional[List[str]] = Field(
         default=None,
         description="Specific drugs to load"
     )
@@ -125,7 +141,7 @@ class MultiProjectTreatmentResponseModel(BaseModel):
         description="Filter by tumor type"
     )
     zscore: bool = Field(
-        default=True,
+        default=False,
         description="Whether to apply z-score normalization"
     )
 

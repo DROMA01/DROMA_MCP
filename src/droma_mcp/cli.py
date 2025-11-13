@@ -85,7 +85,8 @@ class DromaMCPCLI:
             import rpy2.robjects as robjects
             from rpy2.robjects import pandas2ri
             r = robjects.r
-            pandas2ri.activate()
+            # Test pandas2ri converter availability (no need to activate globally)
+            _ = pandas2ri.converter
             results['r_integration'] = True
         except ImportError:
             results['r_integration'] = False
@@ -524,8 +525,6 @@ Documentation: https://github.com/mugpeng/DROMA
             start_time = time.time()
             try:
                 import rpy2.robjects as robjects
-                from rpy2.robjects import pandas2ri
-                pandas2ri.activate()
                 r = robjects.r
                 r('library(DROMA.Set)')
                 r_time = time.time() - start_time

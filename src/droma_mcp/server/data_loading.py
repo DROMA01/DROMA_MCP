@@ -18,37 +18,33 @@ data_loading_mcp = FastMCP("DROMA-Data-Loading")
 def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
     """Convert R result to Python data structures."""
     try:
-        import rpy2.robjects as robjects
-        from rpy2.robjects import pandas2ri
+        from rpy2.robjects import pandas2ri, default_converter
+        from rpy2.robjects.conversion import localconverter
         
-        # Activate pandas conversion
-        pandas2ri.activate()
-        
-        # Check if it's a list (multi-project case)
-        if hasattr(r_result, 'rclass') and 'list' in r_result.rclass:
-            # Handle list of data frames (multi-project results)
-            result_list = []
-            for i, item in enumerate(r_result):
-                if hasattr(item, 'rclass') and ('matrix' in item.rclass or 'data.frame' in item.rclass):
-                    # Convert each data frame in the list
-                    pandas_df = pandas2ri.rpy2py(item)
-                    result_list.append(pandas_df)
-                else:
-                    # Keep non-dataframe items as is
-                    result_list.append({"r_object": str(item), "type": str(type(item))})
-            pandas2ri.deactivate()
-            return result_list
-            
-        # Check if it's a single matrix or data.frame
-        elif hasattr(r_result, 'rclass') and ('matrix' in r_result.rclass or 'data.frame' in r_result.rclass):
-            # Convert R matrix or data.frame to pandas DataFrame
-            pandas_df = pandas2ri.rpy2py(r_result)
-            pandas2ri.deactivate()
-            return pandas_df
-        else:
-            # Return as dictionary for other R objects
-            pandas2ri.deactivate()
-            return {"r_object": str(r_result), "type": str(type(r_result))}
+        # Use localconverter for pandas conversion
+        with localconverter(default_converter + pandas2ri.converter):
+            # Check if it's a list (multi-project case)
+            if hasattr(r_result, 'rclass') and 'list' in r_result.rclass:
+                # Handle list of data frames (multi-project results)
+                result_list = []
+                for i, item in enumerate(r_result):
+                    if hasattr(item, 'rclass') and ('matrix' in item.rclass or 'data.frame' in item.rclass):
+                        # Convert each data frame in the list
+                        pandas_df = pandas2ri.rpy2py(item)
+                        result_list.append(pandas_df)
+                    else:
+                        # Keep non-dataframe items as is
+                        result_list.append({"r_object": str(item), "type": str(type(item))})
+                return result_list
+                
+            # Check if it's a single matrix or data.frame
+            elif hasattr(r_result, 'rclass') and ('matrix' in r_result.rclass or 'data.frame' in r_result.rclass):
+                # Convert R matrix or data.frame to pandas DataFrame
+                pandas_df = pandas2ri.rpy2py(r_result)
+                return pandas_df
+            else:
+                # Return as dictionary for other R objects
+                return {"r_object": str(r_result), "type": str(type(r_result))}
             
     except Exception as e:
         print(f"Error converting R result: {e}")
@@ -56,45 +52,71 @@ def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
 
 
 @data_loading_mcp.tool()
-async def load_molecular_profiles_normalized(
+async def load_molecular_profiles(
     ctx: Context,
     request: LoadMolecularProfilesModel
 ) -> Dict[str, Any]:
     """
     Load molecular profiles with optional z-score normalization.
     
-    Equivalent to R function: loadMolecularProfilesNormalized()
+    Equivalent to R function: loadMolecularProfiles() or loadMultiProjectMolecularProfiles()
     """
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
     
-    # Check if dataset exists
+    # Check if dataset exists (try both DromaSet and MultiDromaSet)
     dataset_r_name = droma_state.get_dataset(request.dataset_name)
+    is_multi = False
     if not dataset_r_name:
-        return {
-            "status": "error",
-            "message": f"Dataset {request.dataset_name} not found. Please load it first."
-        }
+        dataset_r_name = droma_state.get_multidataset(request.dataset_name)
+        is_multi = True
+        if not dataset_r_name:
+            return {
+                "status": "error",
+                "message": f"Dataset {request.dataset_name} not found. Please load it first."
+            }
     
     try:
         # Build R command
         features_str = "NULL"
-        if request.features:
-            features_str = 'c("' + '", "'.join(request.features) + '")'
+        if request.select_features:
+            features_str = 'c("' + '", "'.join(request.select_features) + '")'
         
-        r_command = f'''
-        result <- loadMolecularProfilesNormalized(
-            {dataset_r_name},
-            molecular_type = "{request.molecular_type.value}",
-            features = {features_str},
-            data_type = "{request.data_type.value}",
-            tumor_type = "{request.tumor_type}",
-            zscore = {str(request.z_score).upper()}
-        )
-        result <- as.data.frame(result)
-        '''
+        samples_str = "NULL"
+        if request.samples:
+            samples_str = 'c("' + '", "'.join(request.samples) + '")'
         
-        await ctx.info(f"Executing R command for molecular profiles: {request.molecular_type.value}")
+        # Use appropriate R function based on dataset type
+        if is_multi:
+            r_command = f'''
+            result <- loadMultiProjectMolecularProfiles(
+                {dataset_r_name},
+                feature_type = "{request.feature_type.value}",
+                select_features = {features_str},
+                projects = NULL,
+                overlap_only = FALSE,
+                data_type = "{request.data_type.value}",
+                tumor_type = "{request.tumor_type}",
+                zscore = {str(request.zscore).upper()},
+                format = "{request.format}"
+            )
+            '''
+        else:
+            r_command = f'''
+            result <- loadMolecularProfiles(
+                {dataset_r_name},
+                feature_type = "{request.feature_type.value}",
+                select_features = {features_str},
+                samples = {samples_str},
+                return_data = TRUE,
+                data_type = "{request.data_type.value}",
+                tumor_type = "{request.tumor_type}",
+                zscore = {str(request.zscore).upper()},
+                format = "{request.format}"
+            )
+            '''
+        
+        await ctx.info(f"Executing R command for molecular profiles: {request.feature_type.value}")
         
         # Execute R command
         droma_state.r(r_command)
@@ -104,13 +126,15 @@ async def load_molecular_profiles_normalized(
         python_result = _convert_r_to_python(r_result)
         
         # Cache the result
-        cache_key = f"mol_profiles_{request.dataset_name}_{request.molecular_type.value}"
+        cache_key = f"mol_profiles_{request.dataset_name}_{request.feature_type.value}"
         droma_state.cache_data(cache_key, python_result, {
-            "molecular_type": request.molecular_type.value,
-            "zscore_normalized": request.z_score,
-            "features": request.features,
+            "feature_type": request.feature_type.value,
+            "zscore_normalized": request.zscore,
+            "select_features": request.select_features,
+            "samples": request.samples,
             "data_type": request.data_type.value,
-            "tumor_type": request.tumor_type
+            "tumor_type": request.tumor_type,
+            "format": request.format
         })
         
         # Get basic stats
@@ -129,10 +153,10 @@ async def load_molecular_profiles_normalized(
         return {
             "status": "success",
             "cache_key": cache_key,
-            "molecular_type": request.molecular_type.value,
-            "zscore_normalized": request.z_score,
+            "feature_type": request.feature_type.value,
+            "zscore_normalized": request.zscore,
             "stats": stats,
-            "message": f"Loaded {request.molecular_type.value} data for {request.dataset_name}"
+            "message": f"Loaded {request.feature_type.value} data for {request.dataset_name}"
         }
         
     except Exception as e:
@@ -144,42 +168,65 @@ async def load_molecular_profiles_normalized(
 
 
 @data_loading_mcp.tool()
-async def load_treatment_response_normalized(
+async def load_treatment_response(
     ctx: Context,
     request: LoadTreatmentResponseModel
 ) -> Dict[str, Any]:
     """
     Load treatment response data with optional z-score normalization.
     
-    Equivalent to R function: loadTreatmentResponseNormalized()
+    Equivalent to R function: loadTreatmentResponse() or loadMultiProjectTreatmentResponse()
     """
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
     
-    # Check if dataset exists
+    # Check if dataset exists (try both DromaSet and MultiDromaSet)
     dataset_r_name = droma_state.get_dataset(request.dataset_name)
+    is_multi = False
     if not dataset_r_name:
-        return {
-            "status": "error",
-            "message": f"Dataset {request.dataset_name} not found. Please load it first."
-        }
+        dataset_r_name = droma_state.get_multidataset(request.dataset_name)
+        is_multi = True
+        if not dataset_r_name:
+            return {
+                "status": "error",
+                "message": f"Dataset {request.dataset_name} not found. Please load it first."
+            }
     
     try:
         # Build R command
         drugs_str = "NULL"
-        if request.drugs:
-            drugs_str = 'c("' + '", "'.join(request.drugs) + '")'
+        if request.select_drugs:
+            drugs_str = 'c("' + '", "'.join(request.select_drugs) + '")'
         
-        r_command = f'''
-        result <- loadTreatmentResponseNormalized(
-            {dataset_r_name},
-            drugs = {drugs_str},
-            data_type = "{request.data_type.value}",
-            tumor_type = "{request.tumor_type}",
-            zscore = {str(request.z_score).upper()}
-        )
-        result <- as.data.frame(result)
-        '''
+        samples_str = "NULL"
+        if request.samples:
+            samples_str = 'c("' + '", "'.join(request.samples) + '")'
+        
+        # Use appropriate R function based on dataset type
+        if is_multi:
+            r_command = f'''
+            result <- loadMultiProjectTreatmentResponse(
+                {dataset_r_name},
+                select_drugs = {drugs_str},
+                projects = NULL,
+                overlap_only = FALSE,
+                data_type = "{request.data_type.value}",
+                tumor_type = "{request.tumor_type}",
+                zscore = {str(request.zscore).upper()}
+            )
+            '''
+        else:
+            r_command = f'''
+            result <- loadTreatmentResponse(
+                {dataset_r_name},
+                select_drugs = {drugs_str},
+                samples = {samples_str},
+                return_data = TRUE,
+                data_type = "{request.data_type.value}",
+                tumor_type = "{request.tumor_type}",
+                zscore = {str(request.zscore).upper()}
+            )
+            '''
         
         await ctx.info(f"Executing R command for treatment response data")
         
@@ -193,8 +240,9 @@ async def load_treatment_response_normalized(
         # Cache the result
         cache_key = f"treatment_response_{request.dataset_name}"
         droma_state.cache_data(cache_key, python_result, {
-            "drugs": request.drugs,
-            "zscore_normalized": request.z_score,
+            "select_drugs": request.select_drugs,
+            "samples": request.samples,
+            "zscore_normalized": request.zscore,
             "data_type": request.data_type.value,
             "tumor_type": request.tumor_type
         })
@@ -215,8 +263,8 @@ async def load_treatment_response_normalized(
         return {
             "status": "success",
             "cache_key": cache_key,
-            "drugs": request.drugs,
-            "zscore_normalized": request.z_score,
+            "select_drugs": request.select_drugs,
+            "zscore_normalized": request.zscore,
             "stats": stats,
             "message": f"Loaded treatment response data for {request.dataset_name}"
         }
@@ -230,14 +278,14 @@ async def load_treatment_response_normalized(
 
 
 @data_loading_mcp.tool()
-async def load_multi_project_molecular_profiles_normalized(
+async def load_multi_project_molecular_profiles(
     ctx: Context,
     request: MultiProjectMolecularProfilesModel
 ) -> Dict[str, Any]:
     """
     Load multi-project molecular profiles with optional z-score normalization.
     
-    Equivalent to R function: loadMultiProjectMolecularProfilesNormalized()
+    Equivalent to R function: loadMultiProjectMolecularProfiles()
     """
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
@@ -253,20 +301,21 @@ async def load_multi_project_molecular_profiles_normalized(
     try:
         # Build R command
         features_str = "NULL"
-        if request.features:
-            features_str = 'c("' + '", "'.join(request.features) + '")'
+        if request.select_features:
+            features_str = 'c("' + '", "'.join(request.select_features) + '")'
         
         r_command = f'''
-        result <- loadMultiProjectMolecularProfilesNormalized(
+        result <- loadMultiProjectMolecularProfiles(
             {multidataset_r_name},
-            molecular_type = "{request.molecular_type.value}",
-            features = {features_str},
+            feature_type = "{request.feature_type.value}",
+            select_features = {features_str},
+            projects = NULL,
             overlap_only = {str(request.overlap_only).upper()},
             data_type = "{request.data_type.value}",
             tumor_type = "{request.tumor_type}",
-            zscore = {str(request.zscore).upper()}
+            zscore = {str(request.zscore).upper()},
+            format = "{request.format}"
         )
-        result <- lapply(result, as.data.frame)
         '''
         
         await ctx.info(f"Executing R command for multi-project molecular profiles")
@@ -279,14 +328,15 @@ async def load_multi_project_molecular_profiles_normalized(
         python_result = _convert_r_to_python(r_result)
         
         # Cache the result
-        cache_key = f"multi_mol_profiles_{request.multidromaset_id}_{request.molecular_type.value}"
+        cache_key = f"multi_mol_profiles_{request.multidromaset_id}_{request.feature_type.value}"
         droma_state.cache_data(cache_key, python_result, {
-            "molecular_type": request.molecular_type.value,
+            "feature_type": request.feature_type.value,
             "zscore_normalized": request.zscore,
-            "features": request.features,
+            "select_features": request.select_features,
             "overlap_only": request.overlap_only,
             "data_type": request.data_type.value,
-            "tumor_type": request.tumor_type
+            "tumor_type": request.tumor_type,
+            "format": request.format
         })
         
         # Get basic stats for multi-project data
@@ -309,11 +359,11 @@ async def load_multi_project_molecular_profiles_normalized(
         return {
             "status": "success",
             "cache_key": cache_key,
-            "molecular_type": request.molecular_type.value,
+            "feature_type": request.feature_type.value,
             "zscore_normalized": request.zscore,
             "overlap_only": request.overlap_only,
             "stats": stats,
-            "message": f"Loaded multi-project {request.molecular_type.value} data"
+            "message": f"Loaded multi-project {request.feature_type.value} data"
         }
         
     except Exception as e:
@@ -325,14 +375,14 @@ async def load_multi_project_molecular_profiles_normalized(
 
 
 @data_loading_mcp.tool()
-async def load_multi_project_treatment_response_normalized(
+async def load_multi_project_treatment_response(
     ctx: Context,
     request: MultiProjectTreatmentResponseModel
 ) -> Dict[str, Any]:
     """
     Load multi-project treatment response data with optional z-score normalization.
     
-    Equivalent to R function: loadMultiProjectTreatmentResponseNormalized()
+    Equivalent to R function: loadMultiProjectTreatmentResponse()
     """
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
@@ -348,19 +398,19 @@ async def load_multi_project_treatment_response_normalized(
     try:
         # Build R command
         drugs_str = "NULL"
-        if request.drugs:
-            drugs_str = 'c("' + '", "'.join(request.drugs) + '")'
+        if request.select_drugs:
+            drugs_str = 'c("' + '", "'.join(request.select_drugs) + '")'
         
         r_command = f'''
-        result <- loadMultiProjectTreatmentResponseNormalized(
+        result <- loadMultiProjectTreatmentResponse(
             {multidataset_r_name},
-            drugs = {drugs_str},
+            select_drugs = {drugs_str},
+            projects = NULL,
             overlap_only = {str(request.overlap_only).upper()},
             data_type = "{request.data_type.value}",
             tumor_type = "{request.tumor_type}",
             zscore = {str(request.zscore).upper()}
         )
-        result <- lapply(result, as.data.frame)
         '''
         
         await ctx.info(f"Executing R command for multi-project treatment response")
@@ -375,7 +425,7 @@ async def load_multi_project_treatment_response_normalized(
         # Cache the result
         cache_key = f"multi_treatment_response_{request.multidromaset_id}"
         droma_state.cache_data(cache_key, python_result, {
-            "drugs": request.drugs,
+            "select_drugs": request.select_drugs,
             "zscore_normalized": request.zscore,
             "overlap_only": request.overlap_only,
             "data_type": request.data_type.value,
@@ -402,7 +452,7 @@ async def load_multi_project_treatment_response_normalized(
         return {
             "status": "success",
             "cache_key": cache_key,
-            "drugs": request.drugs,
+            "select_drugs": request.select_drugs,
             "zscore_normalized": request.zscore,
             "overlap_only": request.overlap_only,
             "stats": stats,
@@ -414,69 +464,6 @@ async def load_multi_project_treatment_response_normalized(
         return {
             "status": "error",
             "message": f"Failed to load multi-project treatment response: {str(e)}"
-        }
-
-
-@data_loading_mcp.tool()
-async def check_zscore_normalization(
-    ctx: Context,
-    cache_key: str
-) -> Dict[str, Any]:
-    """
-    Check if cached data has been z-score normalized.
-    
-    Equivalent to R function: isZscoreNormalized()
-    """
-    # Get DROMA state
-    droma_state = ctx.request_context.lifespan_context
-    
-    cached_data = droma_state.get_cached_data(cache_key)
-    if not cached_data:
-        return {
-            "status": "error",
-            "message": f"No cached data found for key: {cache_key}"
-        }
-    
-    try:
-        # Check if data has normalization metadata
-        cached_entry = droma_state.data_cache[cache_key]
-        metadata = cached_entry.get('metadata', {})
-        
-        is_normalized = metadata.get('zscore_normalized', False)
-        
-        # Additional validation for pandas DataFrames
-        data = cached_entry['data']
-        validation_info = {}
-        
-        if isinstance(data, pd.DataFrame):
-            # Check data characteristics
-            validation_info = {
-                "data_type": "DataFrame",
-                "shape": data.shape,
-                "mean_close_to_zero": abs(data.values.mean()) < 0.1,
-                "std_close_to_one": abs(data.values.std() - 1.0) < 0.1,
-                "has_negative_values": (data.values < 0).any(),
-                "sample_statistics": {
-                    "mean": float(data.values.mean()),
-                    "std": float(data.values.std()),
-                    "min": float(data.values.min()),
-                    "max": float(data.values.max())
-                }
-            }
-        
-        return {
-            "status": "success",
-            "cache_key": cache_key,
-            "is_normalized": is_normalized,
-            "validation_info": validation_info,
-            "metadata": metadata
-        }
-        
-    except Exception as e:
-        await ctx.error(f"Error checking normalization status: {str(e)}")
-        return {
-            "status": "error",
-            "message": f"Failed to check normalization status: {str(e)}"
         }
 
 
@@ -549,7 +536,7 @@ async def export_cached_data(
     droma_state = ctx.request_context.lifespan_context
     
     cached_data = droma_state.get_cached_data(cache_key)
-    if not cached_data:
+    if cached_data is None:
         return {
             "status": "error",
             "message": f"No cached data found for key: {cache_key}"
@@ -558,6 +545,11 @@ async def export_cached_data(
     try:
         # Use utility function for saving
         from ..util import save_analysis_result
+        import numpy as np
+        
+        # Convert numpy array to DataFrame if needed
+        if isinstance(cached_data, np.ndarray):
+            cached_data = pd.DataFrame(cached_data)
         
         if isinstance(cached_data, pd.DataFrame):
             export_id = save_analysis_result(cached_data, filename, file_format)
@@ -573,7 +565,7 @@ async def export_cached_data(
         else:
             return {
                 "status": "error",
-                "message": "Only pandas DataFrame can be exported to structured files"
+                "message": "Only pandas DataFrame or numpy array can be exported to structured files"
             }
             
     except Exception as e:

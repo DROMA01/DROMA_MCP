@@ -218,8 +218,8 @@ async def list_droma_samples(
                 columns_info = cursor.fetchall()
                 filtered_samples_by_data = [row[1] for row in columns_info if row[1] != "feature_id"]
             elif request.data_sources in ["mutation_gene", "mutation_site", "fusion"]:
-                # For discrete data, get unique values from cells column
-                cursor.execute(f"SELECT DISTINCT cells FROM {data_table_name} WHERE cells IS NOT NULL")
+                # For discrete data, get unique values from samples column
+                cursor.execute(f"SELECT DISTINCT samples FROM {data_table_name} WHERE samples IS NOT NULL")
                 discrete_result = cursor.fetchall()
                 filtered_samples_by_data = [row[0] for row in discrete_result]
             else:
@@ -228,9 +228,9 @@ async def list_droma_samples(
                 columns_info = cursor.fetchall()
                 column_names = [row[1] for row in columns_info]
                 
-                if "cells" in column_names:
+                if "samples" in column_names:
                     # Discrete data
-                    cursor.execute(f"SELECT DISTINCT cells FROM {data_table_name} WHERE cells IS NOT NULL")
+                    cursor.execute(f"SELECT DISTINCT samples FROM {data_table_name} WHERE samples IS NOT NULL")
                     discrete_result = cursor.fetchall()
                     filtered_samples_by_data = [row[0] for row in discrete_result]
                 else:
@@ -393,7 +393,7 @@ async def list_droma_features(
         if request.data_sources in ["mRNA", "cnv", "meth", "proteinrppa", "proteinms", "drug", "drug_raw"]:
             feature_column = "feature_id"
         elif request.data_sources in ["mutation_gene", "mutation_site", "fusion"]:
-            feature_column = "genes"
+            feature_column = "features"
         else:
             # Try to detect automatically
             cursor.execute(f"PRAGMA table_info({table_name})")
@@ -402,8 +402,8 @@ async def list_droma_features(
             
             if "feature_id" in column_names:
                 feature_column = "feature_id"
-            elif "genes" in column_names:
-                feature_column = "genes"
+            elif "features" in column_names:
+                feature_column = "features"
             else:
                 conn.close()
                 return {
