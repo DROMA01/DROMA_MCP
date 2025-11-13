@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "droma-mcp"
-version = "0.1.0"
-description = "MCP server for DROMA drug-omics association analysis"
+version = "0.2.0"
+description = "MCP server for DROMA drug-omics association analysis (FastMCP 2.13+ compatible)"
 authors = [
     {name = "DROMA Team", email = "contact@droma.org"}
 ]
@@ -13,7 +13,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.3.0",
+    "fastmcp>=2.13.0",
     "pandas>=1.5.0",
     "numpy>=1.21.0",
     "scipy>=1.7.0",
@@ -22,9 +22,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "typer>=0.9.0",
     "rpy2>=3.5.0",
-    "pathlib",
-    "asyncio",
-    "typing-extensions>=4.0.0"
+    "typing-extensions>=4.0.0",
+    "starlette>=0.27.0"
 ]
 
 [project.optional-dependencies]

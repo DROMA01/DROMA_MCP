@@ -6,7 +6,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for **
 
 [![Website](https://img.shields.io/website?url=https%3A//droma01.github.io/)](https://droma01.github.io/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-2.3+-green.svg)](https://github.com/jlowin/fastmcp)
+[![FastMCP](https://img.shields.io/badge/FastMCP-2.13+-green.svg)](https://github.com/jlowin/fastmcp)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/mugpeng/DROMA_MCP/releases)
 
 
 ## 🚀 Overview
@@ -28,6 +29,8 @@ It is a part of [DROMA project](https://github.com/mugpeng/DROMA). Visit the [of
 - **🚄 Performance Optimizations**: Memory management, asynchronous processing, and connection pooling
 - **🛡️ Robust Error Handling**: Comprehensive validation, logging, and graceful error recovery
 - **🎛️ Class-Based CLI**: Modern, type-safe command-line interface with comprehensive help
+- **🔐 Enterprise Authentication**: Optional OAuth, API Key, and JWT authentication (FastMCP 2.13+)
+- **🔌 Modular Architecture**: Clean separation with mount/import patterns for composability
 
 ### 🏎️ Performance Features
 
@@ -45,6 +48,7 @@ It is a part of [DROMA project](https://github.com/mugpeng/DROMA). Visit the [of
 - Python 3.10+
 - R 4.0+ with DROMA.Set and DROMA.R packages
 - DROMA SQLite database
+- FastMCP 2.13+ (automatically installed)
 
 ### Install via pip
 
@@ -58,6 +62,21 @@ pip install droma-mcp
 git clone https://github.com/mugpeng/DROMA_MCP
 cd DROMA_MCP
 pip install -e .
+```
+
+### ⬆️ Upgrading from v0.1.0
+
+If you're upgrading from an older version:
+
+```bash
+# Upgrade to latest version
+pip install --upgrade 'droma-mcp>=0.2.0'
+
+# Update transport protocol in commands:
+# OLD: --transport streamable-http
+# NEW: --transport http
+
+# See UPGRADE_GUIDE.md for detailed migration steps
 ```
 
 ### R Dependencies
@@ -99,7 +118,7 @@ droma-mcp benchmark --module data_loading --iterations 10
 droma-mcp run --db-path path/to/droma.sqlite
 
 # HTTP mode (for web applications)
-droma-mcp run --transport streamable-http --port 8000 --db-path path/to/droma.sqlite
+droma-mcp run --transport http --port 8000 --db-path path/to/droma.sqlite
 
 # With verbose logging and dependency validation
 droma-mcp run --verbose --validate-deps --db-path path/to/droma.sqlite
@@ -114,7 +133,7 @@ Export a configuration file for your MCP client:
 droma-mcp export-config -o droma-config.json
 
 # Generate HTTP configuration
-droma-mcp export-config -o droma-http-config.json --transport streamable-http --port 8000
+droma-mcp export-config -o droma-http-config.json --transport http --port 8000
 ```
 
 Add to your MCP client configuration:
@@ -154,10 +173,11 @@ The DROMA MCP CLI provides comprehensive commands for server management and test
 
 ### Transport Options
 
-- `--transport`: Choose transport protocol (`stdio`, `streamable-http`, `sse`)
+- `--transport`: Choose transport protocol (`stdio`, `http`, `sse`)
+  - **Note:** FastMCP 2.13+ uses `http` instead of `streamable-http`
 - `--host`: Host for HTTP transports (default: `127.0.0.1`)
 - `--port`: Port for HTTP transports (default: `8000`)
-- `--path`: Path for streamable HTTP (default: `/mcp`)
+- `--path`: Path for HTTP (default: `/mcp`)
 
 ### Module Selection
 
@@ -180,14 +200,79 @@ droma-mcp test --db-path /path/to/droma.db
 droma-mcp run --module all --db-path /path/to/droma.db
 
 # Start HTTP server with data loading only
-droma-mcp run --module data_loading --transport streamable-http --port 8080
+droma-mcp run --module data_loading --transport http --port 8080
 
 # Export configuration for HTTP mode
-droma-mcp export-config --transport streamable-http --port 8080 -o http-config.json
+droma-mcp export-config --transport http --port 8080 -o http-config.json
 
 # Run performance benchmark
 droma-mcp benchmark --iterations 5 --module data_loading
 ```
+
+## 🔐 Authentication (Optional)
+
+**New in v0.2.0:** Enterprise-grade authentication for production deployments.
+
+### When Do You Need Authentication?
+
+- ✅ **HTTP/SSE deployments** exposed to the internet
+- ✅ **Multi-user environments** requiring access control
+- ✅ **Production systems** with sensitive data
+- ❌ **Local STDIO mode** (not needed for AI assistants)
+- ❌ **Internal networks** with existing security
+
+### Supported Authentication Methods
+
+```python
+from droma_mcp.auth import create_auth_provider
+
+# 1. API Key (simplest, for internal services)
+auth = create_auth_provider("api_key", api_keys=["secret-key-123"])
+
+# 2. Google OAuth (for user authentication)
+auth = create_auth_provider(
+    "google",
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    base_url="https://your-server.com"
+)
+
+# 3. GitHub OAuth
+auth = create_auth_provider(
+    "github",
+    client_id=os.getenv("GITHUB_CLIENT_ID"),
+    client_secret=os.getenv("GITHUB_CLIENT_SECRET"),
+    base_url="https://your-server.com"
+)
+
+# 4. Microsoft Azure AD
+auth = create_auth_provider(
+    "azure",
+    client_id=os.getenv("AZURE_CLIENT_ID"),
+    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+    base_url="https://your-server.com",
+    tenant_id="your-tenant-id"
+)
+```
+
+### Using Environment Variables
+
+```bash
+# API Key authentication
+export DROMA_MCP_AUTH_PROVIDER=api_key
+export DROMA_MCP_API_KEYS=key1,key2,key3
+
+# Google OAuth
+export DROMA_MCP_AUTH_PROVIDER=google
+export DROMA_MCP_CLIENT_ID=your-client-id
+export DROMA_MCP_CLIENT_SECRET=your-client-secret
+export DROMA_MCP_BASE_URL=https://your-server.com
+
+# Start server (authentication auto-loaded from env)
+droma-mcp run --transport http --port 8000
+```
+
+**Note:** Authentication is completely **optional** and only needed for web deployments. Local STDIO mode (default) does not require authentication.
 
 ## 🛠️ Available Tools
 

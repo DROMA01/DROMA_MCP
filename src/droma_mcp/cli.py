@@ -24,7 +24,7 @@ class Module(str, Enum):
 class Transport(str, Enum):
     """Available transport protocols."""
     STDIO = "stdio"
-    SHTTP = "streamable-http"
+    HTTP = "http"  # FastMCP 2.13+ uses "http" for streamable HTTP
     SSE = "sse"
 
 
@@ -171,7 +171,7 @@ class DromaMCPCLI:
             if transport != Transport.STDIO:
                 typer.echo(f"  Host: {host}")
                 typer.echo(f"  Port: {port}")
-                if transport == Transport.SHTTP:
+                if transport == Transport.HTTP:
                     typer.echo(f"  Path: {path}")
             if db_path:
                 typer.echo(f"  Database: {db_path}")
@@ -204,30 +204,43 @@ class DromaMCPCLI:
         from .server import droma_mcp
         
         if transport == Transport.STDIO:
-            typer.echo("Starting server with STDIO transport...")
+            typer.echo("✓ Starting server with STDIO transport...")
+            typer.echo("  Ready for AI assistant connections")
             droma_mcp.run()
             
-        elif transport == Transport.SHTTP:
+        elif transport == Transport.HTTP:
             from .util import get_data_export, get_figure
             from starlette.routing import Route
             
-            typer.echo(f"Starting server with Streamable HTTP transport on {host}:{port}{path}")
+            typer.echo(f"✓ Starting server with HTTP transport on {host}:{port}{path}")
+            typer.echo(f"  API endpoint: http://{host}:{port}{path}")
+            typer.echo(f"  Download endpoints available at /download/*")
             
-            # Add HTTP routes for data export and figures
-            droma_mcp._additional_http_routes = [
-                Route("/download/export/{data_id}", endpoint=get_data_export),
-                Route("/download/figure/{figure_name}", endpoint=get_figure)
-            ]
+            # Add HTTP routes for data export and figures (FastMCP 2.13 compatible)
+            try:
+                # Try to use the new API if available
+                droma_mcp.add_http_routes([
+                    Route("/download/export/{data_id}", endpoint=get_data_export),
+                    Route("/download/figure/{figure_name}", endpoint=get_figure)
+                ])
+            except AttributeError:
+                # Fallback to old API
+                droma_mcp._additional_http_routes = [
+                    Route("/download/export/{data_id}", endpoint=get_data_export),
+                    Route("/download/figure/{figure_name}", endpoint=get_figure)
+                ]
             
+            # Use "http" transport for FastMCP 2.13+
             droma_mcp.run(
-                transport="streamable-http",
+                transport="http",
                 host=host,
                 port=port,
                 path=path
             )
             
         elif transport == Transport.SSE:
-            typer.echo(f"Starting server with SSE transport on {host}:{port}")
+            typer.echo(f"✓ Starting server with SSE transport on {host}:{port}")
+            typer.echo(f"  SSE endpoint: http://{host}:{port}/sse")
             droma_mcp.run(
                 transport="sse",
                 host=host,
@@ -345,17 +358,17 @@ Available modules:
   • dataset_management - Dataset loading and management operations
 
 Available transports:
-  • stdio          - Standard input/output (default, for AI assistants)
-  • streamable-http - HTTP with streaming support
-  • sse            - Server-Sent Events
+  • stdio - Standard input/output (default, for AI assistants)
+  • http  - HTTP with streaming support (FastMCP 2.13+)
+  • sse   - Server-Sent Events
 
 Usage Examples:
-  droma-mcp run                              # Start with default settings
-  droma-mcp run -m data_loading              # Start with only data loading module
-  droma-mcp run -t streamable-http -p 8080   # Start HTTP server on port 8080
-  droma-mcp test --db-path path/to/db.sqlite # Test configuration
-  droma-mcp validate                         # Validate installation
-  droma-mcp benchmark                        # Run performance benchmark
+  droma-mcp run                        # Start with default settings (STDIO)
+  droma-mcp run -m data_loading        # Start with only data loading module
+  droma-mcp run -t http -p 8080        # Start HTTP server on port 8080
+  droma-mcp test --db-path path/to/db  # Test configuration
+  droma-mcp validate                   # Validate installation
+  droma-mcp benchmark                  # Run performance benchmark
 
 Environment Variables:
   DROMA_DB_PATH         - Default database path
@@ -394,24 +407,25 @@ Documentation: https://github.com/mugpeng/DROMA
         typer.echo(f"MCP client configuration exported to: {output}")
     
     def _generate_config(self, transport: Transport, host: str, port: int) -> Dict[str, Any]:
-        """Generate MCP client configuration."""
+        """Generate MCP client configuration for FastMCP 2.13+."""
         if transport == Transport.STDIO:
             return {
                 "mcpServers": {
                     "droma-mcp": {
                         "command": "droma-mcp",
-                        "args": ["run", "--module", "all", "--transport", "stdio"]
+                        "args": ["run", "--module", "all", "--transport", "stdio"],
+                        "env": {
+                            "DROMA_DB_PATH": "${DROMA_DB_PATH}"
+                        }
                     }
                 }
             }
-        elif transport == Transport.SHTTP:
+        elif transport == Transport.HTTP:
             return {
                 "mcpServers": {
                     "droma-mcp": {
-                        "transport": {
-                            "type": "http",
-                            "url": f"http://{host}:{port}/mcp"
-                        }
+                        "url": f"http://{host}:{port}/mcp",
+                        "transport": "http"
                     }
                 }
             }
@@ -419,10 +433,8 @@ Documentation: https://github.com/mugpeng/DROMA
             return {
                 "mcpServers": {
                     "droma-mcp": {
-                        "transport": {
-                            "type": "sse",
-                            "url": f"http://{host}:{port}/sse"
-                        }
+                        "url": f"http://{host}:{port}/sse",
+                        "transport": "sse"
                     }
                 }
             }

@@ -136,8 +136,14 @@ async def droma_lifespan(server: FastMCP) -> AsyncIterator[DromaState]:
     print("Shutting down DROMA MCP Server...")
 
 
-# Create the main FastMCP server instance
-droma_mcp = FastMCP("DROMA-MCP-Server", lifespan=droma_lifespan)
+# Create the main FastMCP server instance with improved configuration
+droma_mcp = FastMCP(
+    name="DROMA-MCP-Server",
+    lifespan=droma_lifespan,
+    # Add metadata for better discoverability
+    version="0.2.0",
+    description="Model Context Protocol server for drug-omics association analysis"
+)
 
 # Setup function that can be called before running
 async def setup_server():
@@ -148,8 +154,13 @@ async def setup_server():
 # Module loading based on environment variable
 module = os.environ.get('DROMA_MCP_MODULE', 'all')
 
+# Load modules using improved FastMCP 2.13 patterns
+# We use mount() for dynamic composition (tools can access parent state)
+# For static composition, use import_server() instead
+
 if module in ['all', 'data_loading']:
     from .data_loading import data_loading_mcp
+    # Mount with path prefix for better organization
     droma_mcp.mount("/data", data_loading_mcp)
 
 if module in ['all', 'database_query']:
@@ -160,6 +171,9 @@ if module in ['all', 'dataset_management']:
     from .dataset_management import dataset_management_mcp
     droma_mcp.mount("/datasets", dataset_management_mcp)
 
-print(f"DROMA MCP Server initialized with module: {module}")
+# Add server metadata
+print(f"✓ DROMA MCP Server v0.2.0 initialized with module: {module}")
+print(f"✓ FastMCP version: 2.13.x compatible")
+print(f"✓ Available transports: STDIO, HTTP, SSE")
 
 __all__ = ["droma_mcp", "DromaState", "setup_server"] 
