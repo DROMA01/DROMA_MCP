@@ -20,6 +20,16 @@ def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
     try:
         from rpy2.robjects import pandas2ri, default_converter
         from rpy2.robjects.conversion import localconverter
+        import numpy as np
+        
+        def _extract_r_names(r_obj):
+            """Extract row and column names from R object."""
+            try:
+                rownames = list(r_obj.rownames) if hasattr(r_obj, 'rownames') and r_obj.rownames else None
+                colnames = list(r_obj.colnames) if hasattr(r_obj, 'colnames') and r_obj.colnames else None
+                return rownames, colnames
+            except:
+                return None, None
         
         # Use localconverter for pandas conversion
         with localconverter(default_converter + pandas2ri.converter):
@@ -31,6 +41,13 @@ def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
                     if hasattr(item, 'rclass') and ('matrix' in item.rclass or 'data.frame' in item.rclass):
                         # Convert each data frame in the list
                         pandas_df = pandas2ri.rpy2py(item)
+                        # Ensure it's always a DataFrame (not Series or numpy array)
+                        if isinstance(pandas_df, pd.Series):
+                            pandas_df = pandas_df.to_frame()
+                        elif isinstance(pandas_df, np.ndarray):
+                            # Extract names from R object before converting
+                            rownames, colnames = _extract_r_names(item)
+                            pandas_df = pd.DataFrame(pandas_df, index=rownames, columns=colnames)
                         result_list.append(pandas_df)
                     else:
                         # Keep non-dataframe items as is
@@ -41,6 +58,13 @@ def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
             elif hasattr(r_result, 'rclass') and ('matrix' in r_result.rclass or 'data.frame' in r_result.rclass):
                 # Convert R matrix or data.frame to pandas DataFrame
                 pandas_df = pandas2ri.rpy2py(r_result)
+                # Ensure it's always a DataFrame (not Series or numpy array)
+                if isinstance(pandas_df, pd.Series):
+                    pandas_df = pandas_df.to_frame()
+                elif isinstance(pandas_df, np.ndarray):
+                    # Extract names from R object before converting
+                    rownames, colnames = _extract_r_names(r_result)
+                    pandas_df = pd.DataFrame(pandas_df, index=rownames, columns=colnames)
                 return pandas_df
             else:
                 # Return as dictionary for other R objects
@@ -143,7 +167,7 @@ async def load_molecular_profiles(
                 "shape": python_result.shape,
                 "features_count": len(python_result.index),
                 "samples_count": len(python_result.columns),
-                "has_missing_values": python_result.isnull().any().any()
+                "has_missing_values": bool(python_result.isnull().any().any())
             }
         else:
             stats = {"result_type": "non_matrix"}
@@ -253,7 +277,7 @@ async def load_treatment_response(
                 "shape": python_result.shape,
                 "drugs_count": len(python_result.index),
                 "samples_count": len(python_result.columns),
-                "has_missing_values": python_result.isnull().any().any()
+                "has_missing_values": bool(python_result.isnull().any().any())
             }
         else:
             stats = {"result_type": "non_matrix"}
@@ -521,6 +545,103 @@ async def get_cached_data_info(
             "status": "success",
             "cached_items": cache_summary,
             "total_items": len(cache_summary)
+        }
+
+
+@data_loading_mcp.tool()
+async def view_cached_data(
+    ctx: Context,
+    cache_key: str,
+    rows: Optional[int] = 10,
+    features: Optional[list[str]] = None,
+    samples: Optional[list[str]] = None
+) -> Dict[str, Any]:
+    """
+    View cached data content with optional filtering.
+    
+    Args:
+        cache_key: The cache key to retrieve data
+        rows: Number of rows to display (default: 10, use -1 for all rows)
+        features: Optional list of specific features/rows to view
+        samples: Optional list of specific samples/columns to view
+    """
+    # Get DROMA state
+    droma_state = ctx.request_context.lifespan_context
+    
+    # Get cached entry with metadata
+    cached_entry = droma_state.data_cache.get(cache_key)
+    if not cached_entry:
+        return {
+            "status": "error",
+            "message": f"No cached data found for key: {cache_key}"
+        }
+    
+    cached_data = cached_entry['data']
+    metadata = cached_entry.get('metadata', {})
+    
+    try:
+        import numpy as np
+        
+        # Convert numpy array to DataFrame if needed
+        if isinstance(cached_data, np.ndarray):
+            # Try to get feature names and sample names from metadata
+            index_names = metadata.get('select_features')
+            # For samples, we need to get them from the R result - for now use default
+            cached_data = pd.DataFrame(cached_data, index=index_names)
+        
+        if isinstance(cached_data, pd.DataFrame):
+            # Apply filtering
+            data = cached_data
+            
+            # Filter by features (rows)
+            if features:
+                available_features = [f for f in features if f in data.index]
+                if not available_features:
+                    return {
+                        "status": "error",
+                        "message": f"None of the requested features found in data. Available features: {list(data.index[:10])}"
+                    }
+                data = data.loc[available_features]
+            
+            # Filter by samples (columns)
+            if samples:
+                available_samples = [s for s in samples if s in data.columns]
+                if not available_samples:
+                    return {
+                        "status": "error",
+                        "message": f"None of the requested samples found in data. Available samples: {list(data.columns[:10])}"
+                    }
+                data = data[available_samples]
+            
+            # Limit rows
+            if rows > 0:
+                data = data.head(rows)
+            
+            # Convert to dict for JSON serialization
+            data_dict = data.to_dict(orient='split')
+            
+            return {
+                "status": "success",
+                "cache_key": cache_key,
+                "data": {
+                    "index": data_dict['index'],
+                    "columns": data_dict['columns'],
+                    "values": data_dict['data']
+                },
+                "shape": data.shape,
+                "message": f"Showing {data.shape[0]} features × {data.shape[1]} samples"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Cached data is not a DataFrame (type: {type(cached_data)})"
+            }
+            
+    except Exception as e:
+        await ctx.error(f"Error viewing data: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Failed to view data: {str(e)}"
         }
 
 
