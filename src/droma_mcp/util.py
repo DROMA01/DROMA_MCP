@@ -56,11 +56,11 @@ def save_analysis_result(
     
     try:
         if format == "csv":
-            result_df.to_csv(filepath, index=False)
+            result_df.to_csv(filepath, index=True)  # Keep index for feature names
         elif format == "excel":
-            result_df.to_excel(filepath, index=False, engine='openpyxl')
+            result_df.to_excel(filepath, index=True, engine='openpyxl')  # Keep index for feature names
         elif format == "json":
-            result_df.to_json(filepath, orient='records', indent=2)
+            result_df.to_json(filepath, orient='split', indent=2)  # Use 'split' to preserve index
         
         # Store in global registry
         export_id = name.replace(f'.{format}', '')

@@ -552,16 +552,17 @@ async def get_cached_data_info(
 async def view_cached_data(
     ctx: Context,
     cache_key: str,
-    rows: Optional[int] = 10,
+    preview_size: int = 5,
     features: Optional[list[str]] = None,
     samples: Optional[list[str]] = None
 ) -> Dict[str, Any]:
     """
-    View cached data content with optional filtering.
+    Preview cached data with statistics and sample values.
+    Always shows a small preview regardless of data size.
     
     Args:
         cache_key: The cache key to retrieve data
-        rows: Number of rows to display (default: 10, use -1 for all rows)
+        preview_size: Number of rows/columns to preview (default: 5, max: 10)
         features: Optional list of specific features/rows to view
         samples: Optional list of specific samples/columns to view
     """
@@ -584,53 +585,68 @@ async def view_cached_data(
         
         # Convert numpy array to DataFrame if needed
         if isinstance(cached_data, np.ndarray):
-            # Try to get feature names and sample names from metadata
             index_names = metadata.get('select_features')
-            # For samples, we need to get them from the R result - for now use default
             cached_data = pd.DataFrame(cached_data, index=index_names)
         
         if isinstance(cached_data, pd.DataFrame):
-            # Apply filtering
-            data = cached_data
+            original_shape = cached_data.shape
             
-            # Filter by features (rows)
+            # Apply specific feature/sample filtering if requested
+            display_data = cached_data
             if features:
-                available_features = [f for f in features if f in data.index]
-                if not available_features:
-                    return {
-                        "status": "error",
-                        "message": f"None of the requested features found in data. Available features: {list(data.index[:10])}"
-                    }
-                data = data.loc[available_features]
+                available_features = [f for f in features if f in display_data.index]
+                if available_features:
+                    display_data = display_data.loc[available_features]
             
-            # Filter by samples (columns)
             if samples:
-                available_samples = [s for s in samples if s in data.columns]
-                if not available_samples:
-                    return {
-                        "status": "error",
-                        "message": f"None of the requested samples found in data. Available samples: {list(data.columns[:10])}"
-                    }
-                data = data[available_samples]
+                available_samples = [s for s in samples if s in display_data.columns]
+                if available_samples:
+                    display_data = display_data[available_samples]
             
-            # Limit rows
-            if rows > 0:
-                data = data.head(rows)
+            # Limit preview size (max 10x10)
+            preview_size = min(max(preview_size, 1), 10)
+            preview_data = display_data.head(preview_size).iloc[:, :preview_size]
+            preview_dict = preview_data.to_dict(orient='split')
             
-            # Convert to dict for JSON serialization
-            data_dict = data.to_dict(orient='split')
-            
-            return {
-                "status": "success",
-                "cache_key": cache_key,
-                "data": {
-                    "index": data_dict['index'],
-                    "columns": data_dict['columns'],
-                    "values": data_dict['data']
-                },
-                "shape": data.shape,
-                "message": f"Showing {data.shape[0]} features × {data.shape[1]} samples"
+            # Calculate statistics on full data
+            stats = {
+                "min": float(cached_data.min().min()) if not cached_data.empty else None,
+                "max": float(cached_data.max().max()) if not cached_data.empty else None,
+                "mean": float(cached_data.mean().mean()) if not cached_data.empty else None,
+                "missing_count": int(cached_data.isnull().sum().sum()),
+                "missing_rate": f"{(cached_data.isnull().sum().sum() / cached_data.size * 100):.2f}%" if cached_data.size > 0 else "0%"
             }
+            
+            # Build response
+            result = {
+                "status": "preview",
+                "cache_key": cache_key,
+                "full_shape": original_shape,
+                "preview_shape": preview_data.shape,
+                "preview_data": {
+                    "features": preview_dict['index'],
+                    "samples": preview_dict['columns'],
+                    "values": preview_dict['data']
+                },
+                "statistics": stats,
+                "all_features": list(cached_data.index[:20]),  # Show first 20
+                "all_samples": list(cached_data.columns[:20]),  # Show first 20
+                "metadata": metadata
+            }
+            
+            # Add recommendation for large datasets
+            if original_shape[0] > 50 or original_shape[1] > 50:
+                result["recommendation"] = (
+                    f"Dataset is large ({original_shape[0]}×{original_shape[1]}). "
+                    f"Use export_cached_data(cache_key='{cache_key}') to save the full dataset to a file."
+                )
+                result["message"] = f"Showing preview of {preview_data.shape[0]}×{preview_data.shape[1]} from full dataset {original_shape[0]}×{original_shape[1]}"
+            else:
+                result["message"] = f"Showing {preview_data.shape[0]}×{preview_data.shape[1]} preview"
+            
+            await ctx.info(f"Previewed data: {original_shape[0]}×{original_shape[1]}")
+            return result
+            
         else:
             return {
                 "status": "error",
@@ -673,15 +689,20 @@ async def export_cached_data(
             cached_data = pd.DataFrame(cached_data)
         
         if isinstance(cached_data, pd.DataFrame):
+            from ..util import EXPORTS
             export_id = save_analysis_result(cached_data, filename, file_format)
+            
+            # Get the actual file path
+            file_path = EXPORTS.get(export_id, "")
             
             return {
                 "status": "success",
                 "export_id": export_id,
+                "file_path": file_path,
                 "filename": filename,
                 "file_format": file_format,
                 "data_shape": cached_data.shape,
-                "message": f"Data exported successfully as {export_id}"
+                "message": f"Data exported successfully to: {file_path}"
             }
         else:
             return {
