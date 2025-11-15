@@ -138,6 +138,31 @@ async def droma_lifespan(server: FastMCP) -> AsyncIterator[DromaState]:
     yield state
     
     print("Shutting down DROMA MCP Server...")
+    
+    # Cleanup exports on session close
+    from ..util import EXPORTS, FIGURES
+    cleaned_exports = 0
+    cleaned_figures = 0
+    
+    for export_id, filepath in list(EXPORTS.items()):
+        try:
+            Path(filepath).unlink(missing_ok=True)
+            cleaned_exports += 1
+        except Exception as e:
+            print(f"Failed to delete export {filepath}: {e}")
+    
+    for fig_id, filepath in list(FIGURES.items()):
+        try:
+            Path(filepath).unlink(missing_ok=True)
+            cleaned_figures += 1
+        except Exception as e:
+            print(f"Failed to delete figure {filepath}: {e}")
+    
+    EXPORTS.clear()
+    FIGURES.clear()
+    
+    if cleaned_exports > 0 or cleaned_figures > 0:
+        print(f"Cleaned up {cleaned_exports} exports and {cleaned_figures} figures")
 
 
 # Create the main FastMCP server instance with improved configuration

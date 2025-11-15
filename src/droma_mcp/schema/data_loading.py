@@ -146,100 +146,65 @@ class MultiProjectTreatmentResponseModel(BaseModel):
     )
 
 
-class ZscoreNormalizationModel(BaseModel):
-    """Schema for z-score normalization operations."""
+class ViewCachedDataModel(BaseModel):
+    """Schema for viewing cached data with preview."""
     
-    data_id: str = Field(
-        description="Identifier for the data to normalize"
+    cache_key: str = Field(
+        description="The cache key to retrieve data"
     )
-    check_type: bool = Field(
-        default=True,
-        description="Whether to check if data appears to be continuous"
-    )
-
-
-class DataValidationModel(BaseModel):
-    """Schema for data validation responses."""
-    
-    is_normalized: bool = Field(
-        description="Whether data has been z-score normalized"
-    )
-    data_shape: tuple = Field(
-        description="Shape of the data matrix (rows, columns)"
-    )
-    feature_count: int = Field(
-        description="Number of features in the dataset"
-    )
-    sample_count: int = Field(
-        description="Number of samples in the dataset"
-    )
-    data_type: str = Field(
-        description="Type of data (continuous, discrete, etc.)"
-    )
-    normalization_applicable: bool = Field(
-        description="Whether z-score normalization is applicable to this data type"
-    )
-
-
-class BatchLoadModel(BaseModel):
-    """Schema for batch loading operations."""
-    
-    dromaset_ids: List[str] = Field(
-        description="List of DromaSet identifiers to load"
-    )
-    molecular_types: List[MolecularType] = Field(
-        description="Molecular data types to load"
+    preview_size: int = Field(
+        default=5,
+        description="Number of rows/columns to preview (default: 5, max: 10)"
     )
     features: Optional[List[str]] = Field(
         default=None,
-        description="Specific features to load across all datasets"
+        description="Optional list of specific features/rows to view"
     )
-    normalize_separately: bool = Field(
-        default=True,
-        description="Whether to normalize each dataset separately"
-    )
-    merge_strategy: Literal["intersect", "union", "separate"] = Field(
-        default="separate",
-        description="How to handle features across datasets"
-    )
-
-
-class CheckZScoreNormalizationModel(BaseModel):
-    """Schema for checking z-score normalization status."""
-    
-    cache_key: str = Field(
-        description="Cache key of the dataset to check"
-    )
-
-
-class GetCachedDataInfoModel(BaseModel):
-    """Schema for getting cached data information."""
-    
-    cache_key: Optional[str] = Field(
+    samples: Optional[List[str]] = Field(
         default=None,
-        description="Specific cache key to get info for. If None, returns info for all cached data"
-    )
-    include_summary_stats: bool = Field(
-        default=True,
-        description="Whether to include summary statistics"
+        description="Optional list of specific samples/columns to view"
     )
 
 
 class ExportCachedDataModel(BaseModel):
-    """Schema for exporting cached data."""
+    """Schema for exporting cached data to file."""
     
     cache_key: str = Field(
         description="Cache key of the dataset to export"
     )
-    format: Literal["csv", "excel", "json"] = Field(
+    file_format: str = Field(
         default="csv",
-        description="Export format"
+        description="Export file format (e.g., 'csv', 'excel', 'json')"
     )
     filename: Optional[str] = Field(
         default=None,
         description="Custom filename for export (auto-generated if None)"
     )
-    include_metadata: bool = Field(
+    release_memory: bool = Field(
         default=True,
-        description="Whether to include metadata in the export"
+        description="Whether to release memory after export (recommended for large datasets)"
+    )
+
+
+class ViewExportedDataModel(BaseModel):
+    """Schema for viewing exported data files."""
+    
+    export_id: str = Field(
+        description="Export ID returned from export_cached_data"
+    )
+    full_data: bool = Field(
+        default=True,
+        description="Load full data (True, default) or preview only (False)"
+    )
+    preview_size: int = Field(
+        default=10,
+        description="Number of rows/columns to preview when full_data=False (default: 10, max: 50)"
+    )
+    features: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of specific features/rows to view"
+    )
+    samples: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of specific samples/columns to view"
     ) 

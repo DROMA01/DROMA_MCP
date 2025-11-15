@@ -8,7 +8,10 @@ from ..schema.data_loading import (
     LoadMolecularProfilesModel,
     LoadTreatmentResponseModel,
     MultiProjectMolecularProfilesModel,
-    MultiProjectTreatmentResponseModel
+    MultiProjectTreatmentResponseModel,
+    ViewCachedDataModel,
+    ExportCachedDataModel,
+    ViewExportedDataModel
 )
 
 # Create sub-MCP server for data loading
@@ -551,30 +554,21 @@ async def get_cached_data_info(
 @data_loading_mcp.tool()
 async def view_cached_data(
     ctx: Context,
-    cache_key: str,
-    preview_size: int = 5,
-    features: Optional[list[str]] = None,
-    samples: Optional[list[str]] = None
+    request: ViewCachedDataModel
 ) -> Dict[str, Any]:
     """
     Preview cached data with statistics and sample values.
     Always shows a small preview regardless of data size.
-    
-    Args:
-        cache_key: The cache key to retrieve data
-        preview_size: Number of rows/columns to preview (default: 5, max: 10)
-        features: Optional list of specific features/rows to view
-        samples: Optional list of specific samples/columns to view
     """
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
     
     # Get cached entry with metadata
-    cached_entry = droma_state.data_cache.get(cache_key)
+    cached_entry = droma_state.data_cache.get(request.cache_key)
     if not cached_entry:
         return {
             "status": "error",
-            "message": f"No cached data found for key: {cache_key}"
+            "message": f"No cached data found for key: {request.cache_key}"
         }
     
     cached_data = cached_entry['data']
@@ -593,34 +587,28 @@ async def view_cached_data(
             
             # Apply specific feature/sample filtering if requested
             display_data = cached_data
-            if features:
-                available_features = [f for f in features if f in display_data.index]
+            if request.features:
+                available_features = [f for f in request.features if f in display_data.index]
                 if available_features:
                     display_data = display_data.loc[available_features]
             
-            if samples:
-                available_samples = [s for s in samples if s in display_data.columns]
+            if request.samples:
+                available_samples = [s for s in request.samples if s in display_data.columns]
                 if available_samples:
                     display_data = display_data[available_samples]
             
             # Limit preview size (max 10x10)
-            preview_size = min(max(preview_size, 1), 10)
+            preview_size = min(max(request.preview_size, 1), 10)
             preview_data = display_data.head(preview_size).iloc[:, :preview_size]
             preview_dict = preview_data.to_dict(orient='split')
             
-            # Calculate statistics on full data
-            stats = {
-                "min": float(cached_data.min().min()) if not cached_data.empty else None,
-                "max": float(cached_data.max().max()) if not cached_data.empty else None,
-                "mean": float(cached_data.mean().mean()) if not cached_data.empty else None,
-                "missing_count": int(cached_data.isnull().sum().sum()),
-                "missing_rate": f"{(cached_data.isnull().sum().sum() / cached_data.size * 100):.2f}%" if cached_data.size > 0 else "0%"
-            }
+            # Calculate statistics on display data (filtered by features if specified)
+            stats = _calculate_feature_stats(display_data)
             
             # Build response
             result = {
                 "status": "preview",
-                "cache_key": cache_key,
+                "cache_key": request.cache_key,
                 "full_shape": original_shape,
                 "preview_shape": preview_data.shape,
                 "preview_data": {
@@ -638,7 +626,7 @@ async def view_cached_data(
             if original_shape[0] > 50 or original_shape[1] > 50:
                 result["recommendation"] = (
                     f"Dataset is large ({original_shape[0]}×{original_shape[1]}). "
-                    f"Use export_cached_data(cache_key='{cache_key}') to save the full dataset to a file."
+                    f"Use export_cached_data(cache_key='{request.cache_key}') to save the full dataset to a file."
                 )
                 result["message"] = f"Showing preview of {preview_data.shape[0]}×{preview_data.shape[1]} from full dataset {original_shape[0]}×{original_shape[1]}"
             else:
@@ -664,46 +652,62 @@ async def view_cached_data(
 @data_loading_mcp.tool()
 async def export_cached_data(
     ctx: Context,
-    cache_key: str,
-    file_format: str = "csv",
-    filename: Optional[str] = None
+    request: ExportCachedDataModel
 ) -> Dict[str, Any]:
-    """Export cached data to file."""
+    """Export cached data to file with optional memory release and auto preview."""
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
     
-    cached_data = droma_state.get_cached_data(cache_key)
+    cached_data = droma_state.get_cached_data(request.cache_key)
     if cached_data is None:
         return {
             "status": "error",
-            "message": f"No cached data found for key: {cache_key}"
+            "message": f"No cached data found for key: {request.cache_key}"
         }
     
     try:
         # Use utility function for saving
-        from ..util import save_analysis_result
+        from ..util import save_analysis_result, EXPORTS, format_data_size
         import numpy as np
+        from pathlib import Path
         
         # Convert numpy array to DataFrame if needed
         if isinstance(cached_data, np.ndarray):
             cached_data = pd.DataFrame(cached_data)
         
         if isinstance(cached_data, pd.DataFrame):
-            from ..util import EXPORTS
-            export_id = save_analysis_result(cached_data, filename, file_format)
+            export_id = save_analysis_result(cached_data, request.filename, request.file_format)
             
             # Get the actual file path
             file_path = EXPORTS.get(export_id, "")
             
-            return {
+            # Release memory if requested
+            memory_released = False
+            if request.release_memory and request.cache_key in droma_state.data_cache:
+                del droma_state.data_cache[request.cache_key]
+                memory_released = True
+                await ctx.info(f"Released memory for cache_key: {request.cache_key}")
+            
+            # Generate preview from exported file
+            preview_data = _get_export_preview(file_path, request.file_format, preview_size=5)
+            
+            result = {
                 "status": "success",
                 "export_id": export_id,
                 "file_path": file_path,
-                "filename": filename,
-                "file_format": file_format,
+                "filename": request.filename or Path(file_path).name,
+                "file_format": request.file_format,
                 "data_shape": cached_data.shape,
+                "memory_released": memory_released,
                 "message": f"Data exported successfully to: {file_path}"
             }
+            
+            # Add preview if available
+            if preview_data:
+                result["preview"] = preview_data
+                result["message"] += " (with preview)"
+            
+            return result
         else:
             return {
                 "status": "error",
@@ -715,4 +719,205 @@ async def export_cached_data(
         return {
             "status": "error",
             "message": f"Failed to export data: {str(e)}"
+        }
+
+
+def _calculate_feature_stats(data: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Calculate statistics for DataFrame.
+    If multiple features exist, calculate stats per feature.
+    Otherwise, calculate overall stats.
+    """
+    if data.empty:
+        return {"overall": {"min": None, "max": None, "mean": None, "missing_count": 0, "missing_rate": "0%"}}
+    
+    # Calculate overall missing values
+    total_missing = int(data.isnull().sum().sum())
+    total_elements = data.size
+    missing_rate = f"{(total_missing / total_elements * 100):.2f}%" if total_elements > 0 else "0%"
+    
+    # If more than one feature, calculate per-feature stats
+    if len(data.index) > 1:
+        feature_stats = {}
+        for feature in data.index:
+            feature_data = data.loc[feature]
+            feature_missing = int(feature_data.isnull().sum())
+            feature_size = len(feature_data)
+            feature_stats[str(feature)] = {
+                "min": float(feature_data.min()) if not feature_data.isnull().all() else None,
+                "max": float(feature_data.max()) if not feature_data.isnull().all() else None,
+                "mean": float(feature_data.mean()) if not feature_data.isnull().all() else None,
+                "missing_count": feature_missing,
+                "missing_rate": f"{(feature_missing / feature_size * 100):.2f}%" if feature_size > 0 else "0%"
+            }
+        return {
+            "by_feature": feature_stats,
+            "overall_missing": {"missing_count": total_missing, "missing_rate": missing_rate}
+        }
+    else:
+        # Single feature or overall stats
+        return {
+            "overall": {
+                "min": float(data.min().min()),
+                "max": float(data.max().max()),
+                "mean": float(data.mean().mean()),
+                "missing_count": total_missing,
+                "missing_rate": missing_rate
+            }
+        }
+
+
+def _get_export_preview(file_path: str, file_format: str, preview_size: int = 5) -> Optional[Dict[str, Any]]:
+    """Helper function to generate preview from exported file."""
+    try:
+        from pathlib import Path
+        filepath = Path(file_path)
+        
+        if not filepath.exists():
+            return None
+        
+        # Read file based on format
+        if file_format == "csv":
+            data = pd.read_csv(filepath, index_col=0, nrows=preview_size + 5)
+        elif file_format in ["xlsx", "xls", "excel"]:
+            data = pd.read_excel(filepath, index_col=0, nrows=preview_size + 5)
+        elif file_format == "json":
+            data = pd.read_json(filepath, orient='split')
+        else:
+            return None
+        
+        # Limit preview
+        preview_data = data.head(preview_size).iloc[:, :preview_size]
+        preview_dict = preview_data.to_dict(orient='split')
+        
+        return {
+            "shape": preview_data.shape,
+            "features": preview_dict['index'][:preview_size],
+            "samples": preview_dict['columns'][:preview_size],
+            "values": preview_dict['data']
+        }
+    except Exception:
+        return None
+
+
+@data_loading_mcp.tool()
+async def view_exported_data(
+    ctx: Context,
+    request: ViewExportedDataModel
+) -> Dict[str, Any]:
+    """
+    Preview exported data file without loading into memory cache.
+    Useful for verifying export results after memory has been released.
+    """
+    from ..util import EXPORTS, format_data_size
+    from pathlib import Path
+    import numpy as np
+    
+    # Check if export exists
+    if request.export_id not in EXPORTS:
+        return {
+            "status": "error",
+            "message": f"Export not found: {request.export_id}. Available exports: {list(EXPORTS.keys())}"
+        }
+    
+    filepath = Path(EXPORTS[request.export_id])
+    
+    # Check if file exists
+    if not filepath.exists():
+        return {
+            "status": "error",
+            "message": f"Export file not found on disk: {filepath}"
+        }
+    
+    try:
+        # Determine file format
+        file_format = filepath.suffix[1:]  # Remove dot
+        
+        # Read file - full or preview based on request
+        if request.full_data:
+            # Load complete data
+            if file_format == "csv":
+                data = pd.read_csv(filepath, index_col=0)
+            elif file_format in ["xlsx", "xls"]:
+                data = pd.read_excel(filepath, index_col=0)
+            elif file_format == "json":
+                data = pd.read_json(filepath, orient='split')
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unsupported file format: {file_format}"
+                }
+            await ctx.info(f"Loading full data from {filepath.name}")
+        else:
+            # Load preview only (for efficiency)
+            preview_rows = min(max(request.preview_size, 1), 50) + 20
+            if file_format == "csv":
+                data = pd.read_csv(filepath, index_col=0, nrows=preview_rows)
+            elif file_format in ["xlsx", "xls"]:
+                data = pd.read_excel(filepath, index_col=0, nrows=preview_rows)
+            elif file_format == "json":
+                data = pd.read_json(filepath, orient='split')
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unsupported file format: {file_format}"
+                }
+        
+        original_shape = data.shape
+        
+        # Apply filtering if requested
+        display_data = data
+        if request.features:
+            available_features = [f for f in request.features if f in display_data.index]
+            if available_features:
+                display_data = display_data.loc[available_features]
+        
+        if request.samples:
+            available_samples = [s for s in request.samples if s in display_data.columns]
+            if available_samples:
+                display_data = display_data[available_samples]
+        
+        # Limit display size only if not requesting full data
+        if request.full_data:
+            preview_data = display_data
+        else:
+            preview_size = min(max(request.preview_size, 1), 50)
+            preview_data = display_data.head(preview_size).iloc[:, :preview_size]
+        
+        preview_dict = preview_data.to_dict(orient='split')
+        
+        # Calculate statistics on display data (filtered by features if specified)
+        stats = _calculate_feature_stats(display_data)
+        
+        # Get file info
+        file_stats = filepath.stat()
+        
+        result = {
+            "status": "full_data" if request.full_data else "preview",
+            "export_id": request.export_id,
+            "file_path": str(filepath),
+            "file_format": file_format,
+            "file_size_bytes": file_stats.st_size,
+            "file_size_readable": format_data_size(file_stats.st_size),
+            "full_shape": original_shape,
+            "display_shape": preview_data.shape,
+            "data": {
+                "features": preview_dict['index'],
+                "samples": preview_dict['columns'],
+                "values": preview_dict['data']
+            },
+            "statistics": stats,
+            "is_complete": request.full_data,
+            "message": f"Loaded complete data {preview_data.shape[0]}×{preview_data.shape[1]}" if request.full_data 
+                      else f"Showing {preview_data.shape[0]}×{preview_data.shape[1]} preview (use full_data=True for complete data)"
+        }
+        
+        await ctx.info(f"{'Loaded full' if request.full_data else 'Previewed'} exported data: {filepath.name}")
+        return result
+        
+    except Exception as e:
+        await ctx.error(f"Error viewing exported data: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Failed to view exported data: {str(e)}"
         } 
