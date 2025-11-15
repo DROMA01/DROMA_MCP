@@ -504,6 +504,16 @@ async def get_cached_data_info(
     droma_state = ctx.request_context.lifespan_context
     
     if cache_key:
+        # Check if this cache_key has been exported - recommend view_exported_data instead
+        export_id = ctx.get_state(f"export:{cache_key}")
+        if export_id:
+            return {
+                "status": "redirect",
+                "message": f"This data was already exported as export_id '{export_id}'. Use view_exported_data(export_id='{export_id}') instead to avoid context pollution.",
+                "export_id": export_id,
+                "recommendation": f"view_exported_data(export_id='{export_id}', full_data=False)"
+            }
+        
         # Get info for specific cached data
         cached_entry = droma_state.data_cache.get(cache_key)
         if not cached_entry:
@@ -560,6 +570,16 @@ async def view_cached_data(
     Preview cached data with statistics and sample values.
     Always shows a small preview regardless of data size.
     """
+    # Check if this cache_key has been exported - recommend view_exported_data instead
+    export_id = ctx.get_state(f"export:{request.cache_key}")
+    if export_id:
+        return {
+            "status": "redirect",
+            "message": f"This data was already exported as export_id '{export_id}'. Use view_exported_data(export_id='{export_id}') instead to avoid context pollution.",
+            "export_id": export_id,
+            "recommendation": f"view_exported_data(export_id='{export_id}', full_data=True)"
+        }
+    
     # Get DROMA state
     droma_state = ctx.request_context.lifespan_context
     
@@ -617,8 +637,8 @@ async def view_cached_data(
                     "values": preview_dict['data']
                 },
                 "statistics": stats,
-                "all_features": list(cached_data.index[:20]),  # Show first 20
-                "all_samples": list(cached_data.columns[:20]),  # Show first 20
+                "all_features": list(cached_data.index[:10]),  # Show first 10
+                "all_samples": list(cached_data.columns[:10]),  # Show first 10
                 "metadata": metadata
             }
             
@@ -706,6 +726,9 @@ async def export_cached_data(
             if preview_data:
                 result["preview"] = preview_data
                 result["message"] += " (with preview)"
+            
+            # Track export in context state to help guide future queries
+            ctx.set_state(f"export:{request.cache_key}", export_id)
             
             return result
         else:
