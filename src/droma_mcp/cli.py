@@ -53,6 +53,7 @@ class DromaMCPCLI:
     def _setup_environment(
         self,
         module: Module,
+        transport: Optional[Transport] = None,
         db_path: Optional[str] = None,
         r_libs: Optional[str] = None,
         verbose: bool = False,
@@ -61,6 +62,9 @@ class DromaMCPCLI:
     ) -> None:
         """Setup environment variables for the server."""
         os.environ['DROMA_MCP_MODULE'] = module.value
+
+        if transport:
+            os.environ['DROMA_MCP_TRANSPORT'] = transport.value
 
         if db_path:
             os.environ['DROMA_DB_PATH'] = db_path
@@ -172,7 +176,7 @@ class DromaMCPCLI:
                 typer.echo("✓ All dependencies validated")
         
         # Setup environment
-        self._setup_environment(module, db_path, r_libs, verbose, host, port)
+        self._setup_environment(module, transport, db_path, r_libs, verbose, host, port)
         
         if verbose:
             typer.echo(f"Starting DROMA MCP Server v{__version__}")
@@ -385,6 +389,7 @@ Environment Variables:
   DROMA_DB_PATH         - Default database path
   R_LIBS                - R library path
   DROMA_MCP_VERBOSE     - Enable verbose logging
+  DROMA_MCP_TRANSPORT   - Default transport protocol (stdio, http, sse)
   DROMA_MCP_HOST        - Default host for HTTP/SSE transports
   DROMA_MCP_PORT        - Default port for HTTP/SSE transports
 
