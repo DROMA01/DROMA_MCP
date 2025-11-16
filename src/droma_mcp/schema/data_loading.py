@@ -1,6 +1,6 @@
 """Pydantic schemas for DROMA data loading operations."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal
 from enum import Enum
 
@@ -53,6 +53,12 @@ class LoadMolecularProfilesModel(BaseModel):
         default="long",
         description="Data format: 'long' or 'wide'"
     )
+    
+    @field_validator('dataset_name')
+    @classmethod
+    def normalize_dataset_name(cls, v: str) -> str:
+        """Normalize dataset_name by removing spaces around commas."""
+        return ','.join([part.strip() for part in v.split(',')])
 
 
 class LoadTreatmentResponseModel(BaseModel):
@@ -81,6 +87,12 @@ class LoadTreatmentResponseModel(BaseModel):
         default=False,
         description="Whether to apply z-score normalization"
     )
+    
+    @field_validator('dataset_name')
+    @classmethod
+    def normalize_dataset_name(cls, v: str) -> str:
+        """Normalize dataset_name by removing spaces around commas."""
+        return ','.join([part.strip() for part in v.split(',')])
 
 
 class MultiProjectMolecularProfilesModel(BaseModel):

@@ -1,6 +1,6 @@
 """Pydantic schemas for DROMA dataset management operations."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Literal
 
 
@@ -22,6 +22,13 @@ class LoadDatasetModel(BaseModel):
         default=True,
         description="Whether to set this dataset as the active dataset after loading"
     )
+    
+    @field_validator('dataset_id')
+    @classmethod
+    def normalize_dataset_id(cls, v: str) -> str:
+        """Normalize dataset_id by removing spaces around commas."""
+        # Remove spaces around commas for MultiDromaSet IDs
+        return ','.join([part.strip() for part in v.split(',')])
 
 
 class ListDatasetsModel(BaseModel):
