@@ -38,7 +38,6 @@ async def load_dataset(
     Load a DROMA dataset into memory.
     
     This loads datasets (like CCLE, gCSI) from the database into R memory
-    so they can be used by data loading functions like load_molecular_profiles_normalized.
     
     Equivalent to R function: createDromaSetFromDatabase() or createMultiDromaSetFromDatabase()
     """

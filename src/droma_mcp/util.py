@@ -115,7 +115,10 @@ def save_figure(fig_path: Union[str, Path], name: Optional[str] = None) -> str:
     
     try:
         import shutil
-        shutil.copy2(fig_path, dest_path)
+        
+        # Only copy if source and destination are different
+        if fig_path.resolve() != dest_path.resolve():
+            shutil.copy2(fig_path, dest_path)
         
         # Store in global registry
         fig_id = name.replace(fig_path.suffix, '')

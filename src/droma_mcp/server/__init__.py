@@ -197,6 +197,14 @@ if module in ['all', 'dataset_management']:
     from .dataset_management import dataset_management_mcp
     droma_mcp.mount(dataset_management_mcp, prefix="datasets")
 
+if module in ['all', 'visualization']:
+    from .visualization import visualization_mcp
+    droma_mcp.mount(visualization_mcp, prefix="viz")
+
+if module in ['all', 'analysis']:
+    from .analysis import analysis_mcp
+    droma_mcp.mount(analysis_mcp, prefix="analysis")
+
 # Add server metadata
 print(f"✓ DROMA MCP Server v0.2.0 initialized with module: {module}")
 print(f"✓ FastMCP version: 2.13.x compatible")

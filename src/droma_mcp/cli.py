@@ -19,6 +19,8 @@ class Module(str, Enum):
     DATA_LOADING = "data_loading"
     DATABASE_QUERY = "database_query"
     DATASET_MANAGEMENT = "dataset_management"
+    VISUALIZATION = "visualization"
+    ANALYSIS = "analysis"
 
 
 class Transport(str, Enum):

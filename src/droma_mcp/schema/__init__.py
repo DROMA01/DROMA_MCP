@@ -28,6 +28,18 @@ from .dataset_management import (
     UnloadDatasetModel
 )
 
+# Visualization schemas
+# Note: visualization tools use direct parameters, not request models
+# from .visualization import (
+#     PlotDrugSensitivityRankModel
+# )
+
+# Analysis schemas  
+# Note: analysis tools use direct parameters, not request models
+# from .analysis import (
+#     AnalyzeDrugOmicPairModel
+# )
+
 __all__ = [
     # Enums
     "MolecularType",
@@ -48,5 +60,9 @@ __all__ = [
     "LoadDatasetModel",
     "ListDatasetsModel",
     "SetActiveDatasetModel",
-    "UnloadDatasetModel"
+    "UnloadDatasetModel",
+    # Visualization models - currently not used (direct params)
+    # "PlotDrugSensitivityRankModel",
+    # Analysis models - currently not used (direct params)
+    # "AnalyzeDrugOmicPairModel"
 ] 
