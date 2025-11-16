@@ -25,7 +25,8 @@ async def analyze_drug_omic_pair(
     data_type_anno: Optional[str] = None,
     save_plots: bool = True,
     plot_width: float = 10.0,
-    plot_height: float = 6.0
+    plot_height: float = 6.0,
+    display_mode: str = "inline"
 ) -> Dict[str, Any]:
     """
     Analyze associations between a drug and an omic feature.
@@ -58,6 +59,7 @@ async def analyze_drug_omic_pair(
         save_plots: Whether to save plots to files
         plot_width: Plot width in inches
         plot_height: Plot height in inches
+        display_mode: How to display plots: 'inline' (show in chat, default) or 'link' (provide download link only)
     
     Returns:
         Dictionary containing:
@@ -139,6 +141,7 @@ async def analyze_drug_omic_pair(
             temp_dir.mkdir(exist_ok=True)
             
             saved_plots = []
+            inline_images = []
             
             # Save individual study plot(s)
             if_plot_exists = droma_state.r('!is.null(analysis_result$plot)')[0]
@@ -161,12 +164,22 @@ async def analyze_drug_omic_pair(
                 if plot_path.exists():
                     from ..util import save_figure
                     fig_id = save_figure(plot_path, plot_name)
-                    saved_plots.append({
+                    
+                    plot_info = {
                         "type": "individual",
                         "figure_id": fig_id,
                         "figure_path": str(plot_path),
-                        "download_url": f"/download/figure/{fig_id}"
-                    })
+                        "resource_uri": f"figure://{fig_id}"
+                    }
+                    
+                    # Add to inline images list for inline mode
+                    if display_mode == "inline":
+                        inline_images.append({
+                            "title": "Individual Study Plot",
+                            "path": str(plot_path)
+                        })
+                    
+                    saved_plots.append(plot_info)
             
             # Save merged plot if it exists
             if_merged_plot_exists = droma_state.r('!is.null(analysis_result$merged_plot)')[0]
@@ -189,16 +202,45 @@ async def analyze_drug_omic_pair(
                 if merged_plot_path.exists():
                     from ..util import save_figure
                     merged_fig_id = save_figure(merged_plot_path, merged_plot_name)
-                    saved_plots.append({
+                    
+                    plot_info = {
                         "type": "merged",
                         "figure_id": merged_fig_id,
                         "figure_path": str(merged_plot_path),
-                        "download_url": f"/download/figure/{merged_fig_id}"
-                    })
+                        "resource_uri": f"figure://{merged_fig_id}"
+                    }
+                    
+                    # Add to inline images list for inline mode
+                    if display_mode == "inline":
+                        inline_images.append({
+                            "title": "Merged Studies Plot",
+                            "path": str(merged_plot_path)
+                        })
+                    
+                    saved_plots.append(plot_info)
             
             if saved_plots:
                 response["plots"] = saved_plots
-                await ctx.info(f"Saved {len(saved_plots)} plot(s)")
+                response["display_mode"] = display_mode
+                
+                # For inline display mode, format message with images
+                if display_mode == "inline" and inline_images:
+                    # Format message that AI will output in conversation
+                    plot_message = f"{response['message']}\n\n**Generated Plots:**\n\n"
+                    for img in inline_images:
+                        plot_message += f"**{img['title']}:**\n\n![{img['title']}]({img['path']})\n\n"
+                    response["message"] = plot_message
+                else:
+                    # For link mode, add resource URIs to message
+                    if saved_plots:
+                        response["message"] += f"\n\n**Resource URIs (use MCP client to access):**\n"
+                        for plot in saved_plots:
+                            response["message"] += f"- {plot['type'].title()} Plot: `{plot['resource_uri']}`\n"
+                        response["message"] += f"\n**Local Paths:**\n"
+                        for plot in saved_plots:
+                            response["message"] += f"- {plot['type'].title()} Plot: {plot['figure_path']}\n"
+                    
+                await ctx.info(f"Saved {len(saved_plots)} plot(s) (display mode: {display_mode})")
         
         # Extract meta-analysis results if available
         if_meta_exists = droma_state.r('!is.null(analysis_result$meta)')[0]

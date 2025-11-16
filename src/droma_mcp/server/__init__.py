@@ -1,6 +1,7 @@
 """DROMA MCP Server initialization and state management."""
 
 import os
+import base64
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Any, Dict, Optional
 from fastmcp import FastMCP
@@ -205,9 +206,33 @@ if module in ['all', 'analysis']:
     from .analysis import analysis_mcp
     droma_mcp.mount(analysis_mcp, prefix="analysis")
 
+# Register resource handlers for figure downloads
+@droma_mcp.resource("figure://{figure_id}")
+async def get_figure_resource(figure_id: str) -> str:
+    """Provide figure files as MCP resources."""
+    from ..util import FIGURES
+    from pathlib import Path
+    
+    if figure_id not in FIGURES:
+        raise ValueError(f"Figure not found: {figure_id}")
+    
+    filepath = FIGURES[figure_id]
+    if not Path(filepath).exists():
+        raise FileNotFoundError(f"Figure file not found: {filepath}")
+    
+    # Read and return file content
+    with open(filepath, 'rb') as f:
+        content = base64.b64encode(f.read()).decode('utf-8')
+    
+    # Return as data URI for inline display
+    file_ext = Path(filepath).suffix.lower()
+    mime_type = "image/png" if file_ext == ".png" else f"image/{file_ext[1:]}"
+    return f"data:{mime_type};base64,{content}"
+
 # Add server metadata
 print(f"✓ DROMA MCP Server v0.2.0 initialized with module: {module}")
 print(f"✓ FastMCP version: 2.13.x compatible")
 print(f"✓ Available transports: STDIO, HTTP, SSE")
+print(f"✓ Resource handlers registered for figure downloads")
 
 __all__ = ["droma_mcp", "DromaState", "setup_server"] 

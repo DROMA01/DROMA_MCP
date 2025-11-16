@@ -65,6 +65,10 @@ class AnalyzeDrugOmicPairModel(BaseModel):
         default=6.0,
         description="Plot height in inches (default: 6)"
     )
+    display_mode: str = Field(
+        default="inline",
+        description="How to display plots: 'inline' (show in chat, default) or 'link' (provide download link only)"
+    )
 
 
 __all__ = [

@@ -27,7 +27,8 @@ async def plot_drug_sensitivity_rank(
     db_path: Union[str, None] = None,
     output_file: Union[str, None] = None,
     width: float = 10.0,
-    height: float = 6.0
+    height: float = 6.0,
+    display_mode: str = "inline"
 ) -> Dict[str, Any]:
     """
     Create drug sensitivity rank plot showing samples ordered by sensitivity values.
@@ -56,6 +57,7 @@ async def plot_drug_sensitivity_rank(
         output_file: Optional output file path for saving the plot
         width: Plot width in inches
         height: Plot height in inches
+        display_mode: How to display plots: 'inline' (show in chat, default) or 'link' (provide download link only)
     
     Returns:
         Dictionary containing:
@@ -166,13 +168,15 @@ async def plot_drug_sensitivity_rank(
         from ..util import save_figure
         figure_id = save_figure(output_path, output_name)
         
-        await ctx.info(f"Plot saved successfully: {figure_id}")
+        await ctx.info(f"Plot saved successfully: {figure_id} (display mode: {display_mode})")
         
-        return {
+        # Prepare response
+        response = {
             "status": "success",
             "message": f"Drug sensitivity rank plot created successfully for {select_drugs}",
             "figure_id": figure_id,
             "figure_path": str(output_path),
+            "display_mode": display_mode,
             "plot_info": {
                 "drug": select_drugs,
                 "dataset": dataset_name,
@@ -186,8 +190,20 @@ async def plot_drug_sensitivity_rank(
                     "height": height
                 }
             },
-            "download_url": f"/download/figure/{figure_id}" if ctx.request_context else None
+            "resource_uri": f"figure://{figure_id}"
         }
+        
+        # Format message based on display mode
+        if display_mode == "inline":
+            # Add markdown formatted image to message using file path
+            plot_message = f"{response['message']}\n\n**Drug Sensitivity Rank Plot:**\n\n![Drug Sensitivity Rank for {select_drugs}]({str(output_path)})\n\n"
+            response["message"] = plot_message
+        else:
+            # For link mode, add resource URI and local path to message
+            response["message"] += f"\n\n**Resource URI (use MCP client to access):** `{response['resource_uri']}`"
+            response["message"] += f"\n\n**Local Path:** {str(output_path)}"
+        
+        return response
         
     except Exception as e:
         error_msg = str(e)
