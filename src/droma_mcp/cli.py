@@ -55,19 +55,27 @@ class DromaMCPCLI:
         module: Module,
         db_path: Optional[str] = None,
         r_libs: Optional[str] = None,
-        verbose: bool = False
+        verbose: bool = False,
+        host: Optional[str] = None,
+        port: Optional[int] = None
     ) -> None:
         """Setup environment variables for the server."""
         os.environ['DROMA_MCP_MODULE'] = module.value
-        
+
         if db_path:
             os.environ['DROMA_DB_PATH'] = db_path
-        
+
         if r_libs:
             os.environ['R_LIBS'] = r_libs
-        
+
         if verbose:
             os.environ['DROMA_MCP_VERBOSE'] = "1"
+
+        if host:
+            os.environ['DROMA_MCP_HOST'] = host
+
+        if port:
+            os.environ['DROMA_MCP_PORT'] = str(port)
     
     def _validate_dependencies(self) -> Dict[str, bool]:
         """Validate all dependencies."""
@@ -164,7 +172,7 @@ class DromaMCPCLI:
                 typer.echo("✓ All dependencies validated")
         
         # Setup environment
-        self._setup_environment(module, db_path, r_libs, verbose)
+        self._setup_environment(module, db_path, r_libs, verbose, host, port)
         
         if verbose:
             typer.echo(f"Starting DROMA MCP Server v{__version__}")
@@ -377,6 +385,8 @@ Environment Variables:
   DROMA_DB_PATH         - Default database path
   R_LIBS                - R library path
   DROMA_MCP_VERBOSE     - Enable verbose logging
+  DROMA_MCP_HOST        - Default host for HTTP/SSE transports
+  DROMA_MCP_PORT        - Default port for HTTP/SSE transports
 
 Documentation: https://github.com/mugpeng/DROMA
 """)
