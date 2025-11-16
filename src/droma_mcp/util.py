@@ -3,6 +3,7 @@
 import tempfile
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
 from starlette.requests import Request
@@ -15,6 +16,53 @@ logger = logging.getLogger(__name__)
 # Global storage for exports and figures
 EXPORTS: Dict[str, str] = {}
 FIGURES: Dict[str, str] = {}
+
+
+def get_server_url() -> Union[str, None]:
+    """
+    Get the server URL if running in HTTP transport mode.
+
+    Returns:
+        str: Base URL for HTTP transport, None for STDIO/SSE
+    """
+    transport = os.environ.get('DROMA_MCP_TRANSPORT', '').lower()
+    if transport == 'http':
+        host = os.environ.get('DROMA_MCP_HOST', '127.0.0.1')
+        port = os.environ.get('DROMA_MCP_PORT', '8000')
+        return f"http://{host}:{port}"
+    return None
+
+
+def get_figure_url(figure_id: str) -> str:
+    """
+    Generate accessible URL for a figure.
+
+    Args:
+        figure_id: The figure identifier
+
+    Returns:
+        str: URL to access the figure
+    """
+    base_url = get_server_url()
+    if base_url:
+        return f"{base_url}/download/figure/{figure_id}"
+    return ""
+
+
+def get_export_url(data_id: str) -> str:
+    """
+    Generate accessible URL for data export.
+
+    Args:
+        data_id: The data export identifier
+
+    Returns:
+        str: URL to access the exported data
+    """
+    base_url = get_server_url()
+    if base_url:
+        return f"{base_url}/download/export/{data_id}"
+    return ""
 
 
 def save_analysis_result(

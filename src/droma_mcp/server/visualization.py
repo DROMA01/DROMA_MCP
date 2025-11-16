@@ -167,15 +167,24 @@ async def plot_drug_sensitivity_rank(
         # Save figure using util function
         from ..util import save_figure
         figure_id = save_figure(output_path, output_name)
-        
+
         await ctx.info(f"Plot saved successfully: {figure_id} (display mode: {display_mode})")
-        
+
+        # Determine figure path/URL based on transport mode
+        from ..util import get_server_url, get_figure_url
+        server_url = get_server_url()
+        figure_url = get_figure_url(figure_id) if server_url else None
+        figure_display_path = figure_url if figure_url else str(output_path)
+
         # Prepare response
         response = {
             "status": "success",
             "message": f"Drug sensitivity rank plot created successfully for {select_drugs}",
             "figure_id": figure_id,
-            "figure_path": str(output_path),
+            "figure_path": str(output_path),  # Keep local path for reference
+            "figure_url": figure_url,  # Add URL for HTTP mode
+            "figure_display_path": figure_display_path,  # Path/URL for display
+            "transport_mode": "http" if server_url else "stdio",
             "display_mode": display_mode,
             "plot_info": {
                 "drug": select_drugs,
@@ -195,13 +204,17 @@ async def plot_drug_sensitivity_rank(
         
         # Format message based on display mode
         if display_mode == "inline":
-            # Add markdown formatted image to message using file path
-            plot_message = f"{response['message']}\n\n**Drug Sensitivity Rank Plot:**\n\n![Drug Sensitivity Rank for {select_drugs}]({str(output_path)})\n\n"
+            # Add markdown formatted image to message using URL or file path
+            plot_message = f"{response['message']}\n\n**Drug Sensitivity Rank Plot:**\n\n![Drug Sensitivity Rank for {select_drugs}]({figure_display_path})\n\n"
             response["message"] = plot_message
         else:
-            # For link mode, add resource URI and local path to message
+            # For link mode, add resource URI and path/URL to message
             response["message"] += f"\n\n**Resource URI (use MCP client to access):** `{response['resource_uri']}`"
-            response["message"] += f"\n\n**Local Path:** {str(output_path)}"
+            if server_url:
+                response["message"] += f"\n\n**Download URL:** {figure_url}"
+                response["message"] += f"\n\n**Local Path:** {str(output_path)}"
+            else:
+                response["message"] += f"\n\n**Local Path:** {str(output_path)}"
         
         return response
         
