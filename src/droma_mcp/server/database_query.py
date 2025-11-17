@@ -3,6 +3,7 @@
 from fastmcp import FastMCP, Context
 from typing import Dict, Any
 import sqlite3
+import os
 from pathlib import Path
 
 from ..schema.database_query import (
@@ -19,7 +20,6 @@ database_query_mcp = FastMCP("DROMA-Database-Query")
 def _get_database_connection(droma_state) -> sqlite3.Connection:
     """Get database connection from DROMA state."""
     # Check if we have a database path in environment or state
-    import os
     db_path = os.environ.get('DROMA_DB_PATH')
     
     if not db_path:

@@ -3,6 +3,8 @@
 from fastmcp import FastMCP, Context
 from typing import Dict, Optional, Any, Union
 import pandas as pd
+import numpy as np
+from pathlib import Path
 
 from ..schema.data_loading import (
     LoadMolecularProfilesModel,
@@ -14,6 +16,9 @@ from ..schema.data_loading import (
     ViewExportedDataModel
 )
 
+# Import utility functions
+from ..util import save_analysis_result, EXPORTS, format_data_size
+
 # Create sub-MCP server for data loading
 data_loading_mcp = FastMCP("DROMA-Data-Loading")
 
@@ -23,7 +28,6 @@ def _convert_r_to_python(r_result) -> Union[pd.DataFrame, Dict[str, Any], list]:
     try:
         from rpy2.robjects import pandas2ri, default_converter
         from rpy2.robjects.conversion import localconverter
-        import numpy as np
         
         def _extract_r_names(r_obj):
             """Extract row and column names from R object."""
@@ -595,8 +599,6 @@ async def view_cached_data(
     metadata = cached_entry.get('metadata', {})
     
     try:
-        import numpy as np
-        
         # Convert numpy array to DataFrame if needed
         if isinstance(cached_data, np.ndarray):
             index_names = metadata.get('select_features')
@@ -687,10 +689,6 @@ async def export_cached_data(
     
     try:
         # Use utility function for saving
-        from ..util import save_analysis_result, EXPORTS, format_data_size
-        import numpy as np
-        from pathlib import Path
-        
         # Convert numpy array to DataFrame if needed
         if isinstance(cached_data, np.ndarray):
             cached_data = pd.DataFrame(cached_data)
@@ -793,7 +791,6 @@ def _calculate_feature_stats(data: pd.DataFrame) -> Dict[str, Any]:
 def _get_export_preview(file_path: str, file_format: str, preview_size: int = 5) -> Optional[Dict[str, Any]]:
     """Helper function to generate preview from exported file."""
     try:
-        from pathlib import Path
         filepath = Path(file_path)
         
         if not filepath.exists():
@@ -832,10 +829,6 @@ async def view_exported_data(
     Preview exported data file without loading into memory cache.
     Useful for verifying export results after memory has been released.
     """
-    from ..util import EXPORTS, format_data_size
-    from pathlib import Path
-    import numpy as np
-    
     # Check if export exists
     if request.export_id not in EXPORTS:
         return {

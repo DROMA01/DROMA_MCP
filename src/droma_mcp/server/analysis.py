@@ -5,6 +5,10 @@ from typing import Dict, Any, List, Optional, Union
 import tempfile
 from pathlib import Path
 
+# Import utility functions
+from ..util import save_figure, get_server_url, get_figure_url
+from ..server.data_loading import _convert_r_to_python
+
 # Create sub-MCP server for analysis
 analysis_mcp = FastMCP("DROMA-Analysis")
 
@@ -162,11 +166,9 @@ async def analyze_drug_omic_pair(
                 droma_state.r(save_cmd)
                 
                 if plot_path.exists():
-                    from ..util import save_figure
                     fig_id = save_figure(plot_path, plot_name)
 
                     # Get server URL and generate figure URL if in HTTP mode
-                    from ..util import get_server_url, get_figure_url
                     server_url = get_server_url()
                     figure_url = get_figure_url(fig_id) if server_url else None
                     figure_display_path = figure_url if figure_url else str(plot_path)
@@ -176,8 +178,7 @@ async def analyze_drug_omic_pair(
                         "figure_id": fig_id,
                         "figure_path": str(plot_path),  # Keep local path for reference
                         "figure_url": figure_url,  # Add URL for HTTP mode
-                        "figure_display_path": figure_display_path,  # Path/URL for display
-                        "resource_uri": f"figure://{fig_id}"
+                        "figure_display_path": figure_display_path  # Path/URL for display
                     }
                     
                     # Add to inline images list for inline mode
@@ -209,11 +210,9 @@ async def analyze_drug_omic_pair(
                 droma_state.r(save_merged_cmd)
                 
                 if merged_plot_path.exists():
-                    from ..util import save_figure
                     merged_fig_id = save_figure(merged_plot_path, merged_plot_name)
 
                     # Get server URL and generate figure URL if in HTTP mode
-                    from ..util import get_server_url, get_figure_url
                     server_url = get_server_url()
                     merged_figure_url = get_figure_url(merged_fig_id) if server_url else None
                     merged_figure_display_path = merged_figure_url if merged_figure_url else str(merged_plot_path)
@@ -223,8 +222,7 @@ async def analyze_drug_omic_pair(
                         "figure_id": merged_fig_id,
                         "figure_path": str(merged_plot_path),  # Keep local path for reference
                         "figure_url": merged_figure_url,  # Add URL for HTTP mode
-                        "figure_display_path": merged_figure_display_path,  # Path/URL for display
-                        "resource_uri": f"figure://{merged_fig_id}"
+                        "figure_display_path": merged_figure_display_path  # Path/URL for display
                     }
                     
                     # Add to inline images list for inline mode
@@ -249,14 +247,9 @@ async def analyze_drug_omic_pair(
                         plot_message += f"**{img['title']}:**\n\n![{img['title']}]({img['path']})\n\n"
                     response["message"] = plot_message
                 else:
-                    # For link mode, add resource URIs and URLs to message
+                    # For link mode, add URLs and paths to message
                     if saved_plots:
-                        response["message"] += f"\n\n**Resource URIs (use MCP client to access):**\n"
-                        for plot in saved_plots:
-                            response["message"] += f"- {plot['type'].title()} Plot: `{plot['resource_uri']}`\n"
-
                         # Add download URLs if in HTTP mode
-                        from ..util import get_server_url
                         server_url = get_server_url()
                         if server_url:
                             response["message"] += f"\n\n**Download URLs:**\n"
@@ -278,7 +271,6 @@ async def analyze_drug_omic_pair(
                 meta_r = droma_state.r('analysis_result$meta')
                 
                 # Convert to Python dict
-                from ..server.data_loading import _convert_r_to_python
                 meta_data = _convert_r_to_python(meta_r)
                 
                 # Try to extract key statistics
