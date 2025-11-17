@@ -14,6 +14,9 @@ from ..schema.data_loading import (
     ViewExportedDataModel
 )
 
+# Import utility functions at module level
+from ..util import save_analysis_result, EXPORTS, format_data_size
+
 # Create sub-MCP server for data loading
 data_loading_mcp = FastMCP("DROMA-Data-Loading")
 
@@ -687,7 +690,6 @@ async def export_cached_data(
     
     try:
         # Use utility function for saving
-        from ..util import save_analysis_result, EXPORTS, format_data_size
         import numpy as np
         from pathlib import Path
         
@@ -832,7 +834,6 @@ async def view_exported_data(
     Preview exported data file without loading into memory cache.
     Useful for verifying export results after memory has been released.
     """
-    from ..util import EXPORTS, format_data_size
     from pathlib import Path
     import numpy as np
     

@@ -5,6 +5,9 @@ from typing import Dict, Any, Union
 import tempfile
 from pathlib import Path
 
+# Import utility functions at module level
+from ..util import save_figure, get_server_url, get_figure_url
+
 # Create sub-MCP server for visualization
 visualization_mcp = FastMCP("DROMA-Visualization")
 
@@ -165,13 +168,11 @@ async def plot_drug_sensitivity_rank(
             }
         
         # Save figure using util function
-        from ..util import save_figure
         figure_id = save_figure(output_path, output_name)
 
         await ctx.info(f"Plot saved successfully: {figure_id} (display mode: {display_mode})")
 
         # Determine figure path/URL based on transport mode
-        from ..util import get_server_url, get_figure_url
         server_url = get_server_url()
         figure_url = get_figure_url(figure_id) if server_url else None
         figure_display_path = figure_url if figure_url else str(output_path)
@@ -198,8 +199,7 @@ async def plot_drug_sensitivity_rank(
                     "width": width,
                     "height": height
                 }
-            },
-            "resource_uri": f"figure://{figure_id}"
+            }
         }
         
         # Format message based on display mode
@@ -208,13 +208,10 @@ async def plot_drug_sensitivity_rank(
             plot_message = f"{response['message']}\n\n**Drug Sensitivity Rank Plot:**\n\n![Drug Sensitivity Rank for {select_drugs}]({figure_display_path})\n\n"
             response["message"] = plot_message
         else:
-            # For link mode, add resource URI and path/URL to message
-            response["message"] += f"\n\n**Resource URI (use MCP client to access):** `{response['resource_uri']}`"
+            # For link mode, add download URL and path to message
             if server_url:
                 response["message"] += f"\n\n**Download URL:** {figure_url}"
-                response["message"] += f"\n\n**Local Path:** {str(output_path)}"
-            else:
-                response["message"] += f"\n\n**Local Path:** {str(output_path)}"
+            response["message"] += f"\n\n**Local Path:** {str(output_path)}"
         
         return response
         
