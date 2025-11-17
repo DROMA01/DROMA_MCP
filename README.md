@@ -4,7 +4,7 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for **DROMA** (Drug Response Omics association MAp) - enabling natural language interactions with drug-omics association analysis.
 
-[![Website](https://img.shields.io/website?url=https%3A//droma01.github.io/)](https://droma01.github.io/)
+[![Website](https://img.shields.io/website?url=https%3A//droma01.github.io/DROMA/)](https://droma01.github.io/DROMA/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.13+-green.svg)](https://github.com/jlowin/fastmcp)
 [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/mugpeng/DROMA_MCP/releases)
@@ -14,7 +14,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for **
 
 DROMA MCP Server bridges the gap between AI assistants and cancer pharmacogenomics analysis by providing a natural language interface to the [DROMA.R](https://github.com/mugpeng/DROMA_R) and [DROMA.Set](https://github.com/mugpeng/DROMA_Set) packages.
 
-It is a part of [DROMA project](https://github.com/mugpeng/DROMA). Visit the [official DROMA website](https://droma01.github.io/) for comprehensive documentation and interactive examples.
+It is a part of [DROMA project](https://github.com/mugpeng/DROMA). Visit the [official DROMA website](https://droma01.github.io/DROMA/) for comprehensive documentation and interactive examples.
 
 ### Key Features
 
@@ -162,7 +162,7 @@ For detailed help: `droma-mcp --help` or `droma-mcp run --help`
 
 **Database Connection**: Verify database path with `droma-mcp test --db-path path/to/droma.db`
 
-For more help, see the [official DROMA website](https://droma01.github.io/) or open an issue on GitHub.
+For more help, see the [official DROMA website](https://droma01.github.io/DROMA/) or open an issue on GitHub.
 
 ## 🤝 Contributing
 
